@@ -92,16 +92,9 @@ alter table audit_logs enable row level security;
 alter table organization_members enable row level security;
 
 -- Section 1.1 + Section 2: tenant isolation via organization membership
-create policy "Users can only see their own org" on organizations
-  for all
+create policy "Org members can read their own org" on organizations
+  for select
   using (
-    auth.uid() in (
-      select om.user_id
-      from organization_members om
-      where om.organization_id = organizations.id
-    )
-  )
-  with check (
     auth.uid() in (
       select om.user_id
       from organization_members om
@@ -109,6 +102,35 @@ create policy "Users can only see their own org" on organizations
     )
   );
 
+create policy "Org admins can update their own org" on organizations
+  for update
+  using (
+    auth.uid() in (
+      select om.user_id
+      from organization_members om
+      where om.organization_id = organizations.id
+        and om.role = 'admin'
+    )
+  )
+  with check (
+    auth.uid() in (
+      select om.user_id
+      from organization_members om
+      where om.organization_id = organizations.id
+        and om.role = 'admin'
+    )
+  );
+
+create policy "Org admins can delete their own org" on organizations
+  for delete
+  using (
+    auth.uid() in (
+      select om.user_id
+      from organization_members om
+      where om.organization_id = organizations.id
+        and om.role = 'admin'
+    )
+  );
 create policy "Org members can read templates" on templates
   for select
   using (
