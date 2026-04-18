@@ -131,6 +131,11 @@ create policy "Org admins can delete their own org" on organizations
         and om.role = 'admin'
     )
   );
+
+create policy "Authenticated users can create organizations" on organizations
+  for insert
+  with check (auth.uid() is not null);
+
 create policy "Org members can read templates" on templates
   for select
   using (
