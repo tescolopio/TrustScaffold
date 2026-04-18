@@ -1,8 +1,5 @@
-export const getRequiredEnv = (
-  name:
-    | 'NEXT_PUBLIC_SUPABASE_URL'
-    | 'NEXT_PUBLIC_SUPABASE_ANON_KEY'
-    | 'SUPABASE_SERVICE_ROLE_KEY',
+export const getRequiredPublicEnv = (
+  name: 'NEXT_PUBLIC_SUPABASE_URL' | 'NEXT_PUBLIC_SUPABASE_ANON_KEY',
 ) => {
   const value = process.env[name];
 

@@ -84,6 +84,24 @@ create trigger generated_docs_set_updated_at
 before update on generated_docs
 for each row execute function public.set_updated_at();
 
+create or replace function public.handle_new_organization()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.organization_members (organization_id, user_id, role)
+  values (new.id, auth.uid(), 'admin');
+
+  return new;
+end;
+$$;
+
+create trigger on_organization_created
+after insert on organizations
+for each row execute function public.handle_new_organization();
+
 -- Enable RLS on all tables
 alter table organizations enable row level security;
 alter table templates enable row level security;
@@ -146,14 +164,38 @@ create policy "Org members can read templates" on templates
     )
   );
 
-create policy "Users can access docs in their org" on generated_docs
-  for all
+create policy "Org members can view docs" on generated_docs
+  for select
   using (
     exists (
       select 1
       from organization_members om
       where om.organization_id = generated_docs.organization_id
         and om.user_id = auth.uid()
+    )
+  );
+
+create policy "Authorized members can create docs" on generated_docs
+  for insert
+  with check (
+    exists (
+      select 1
+      from organization_members om
+      where om.organization_id = generated_docs.organization_id
+        and om.user_id = auth.uid()
+        and om.role in ('admin', 'editor', 'approver')
+    )
+  );
+
+create policy "Authorized members can update docs" on generated_docs
+  for update
+  using (
+    exists (
+      select 1
+      from organization_members om
+      where om.organization_id = generated_docs.organization_id
+        and om.user_id = auth.uid()
+        and om.role in ('admin', 'editor', 'approver')
     )
   )
   with check (
@@ -162,6 +204,19 @@ create policy "Users can access docs in their org" on generated_docs
       from organization_members om
       where om.organization_id = generated_docs.organization_id
         and om.user_id = auth.uid()
+        and om.role in ('admin', 'editor', 'approver')
+    )
+  );
+
+create policy "Authorized members can delete docs" on generated_docs
+  for delete
+  using (
+    exists (
+      select 1
+      from organization_members om
+      where om.organization_id = generated_docs.organization_id
+        and om.user_id = auth.uid()
+        and om.role in ('admin', 'editor', 'approver')
     )
   );
 
@@ -176,28 +231,14 @@ create policy "Users can access audit logs in their org" on audit_logs
     )
   );
 
-create policy "Users can create audit logs in their org" on audit_logs
-  for insert
-  with check (
-    user_id = auth.uid()
-    and exists (
-      select 1
-      from organization_members om
-      where om.organization_id = audit_logs.organization_id
-        and om.user_id = auth.uid()
-    )
-  );
-
-create policy "Users can view org memberships" on organization_members
+create policy "Users can view members of their organizations" on organization_members
   for select
   using (
-    auth.uid() = user_id
-    or exists (
+    exists (
       select 1
-      from organization_members admin_member
-      where admin_member.organization_id = organization_members.organization_id
-        and admin_member.user_id = auth.uid()
-        and admin_member.role = 'admin'
+      from organization_members my_membership
+      where my_membership.organization_id = organization_members.organization_id
+        and my_membership.user_id = auth.uid()
     )
   );
 

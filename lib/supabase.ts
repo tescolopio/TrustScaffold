@@ -1,10 +1,10 @@
 import { createBrowserClient } from '@supabase/ssr';
 
-import { getRequiredEnv } from './supabase-env';
+import { getRequiredPublicEnv } from './supabase-public-env';
 
 // Section 8 – browser-safe client helper.
 export const createSupabaseBrowserClient = () =>
   createBrowserClient(
-    getRequiredEnv('NEXT_PUBLIC_SUPABASE_URL'),
-    getRequiredEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY'),
+    getRequiredPublicEnv('NEXT_PUBLIC_SUPABASE_URL'),
+    getRequiredPublicEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY'),
   );
