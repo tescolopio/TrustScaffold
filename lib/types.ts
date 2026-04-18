@@ -11,7 +11,7 @@ export type CloudConfig = {
     macie: boolean;
   };
   gcp?: {
-    iam?: boolean;
+    iam: boolean;
     securityCommandCenter?: boolean;
   };
 };

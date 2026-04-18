@@ -2,6 +2,7 @@
 -- Section 2 – Database Schema (Supabase)
 
 create extension if not exists "uuid-ossp";
+create type org_role as enum ('admin', 'editor', 'viewer', 'approver');
 
 create table organizations (
   id uuid primary key default uuid_generate_v4(),
@@ -29,7 +30,7 @@ create table templates (
 create table generated_docs (
   id uuid primary key default uuid_generate_v4(),
   organization_id uuid references organizations(id) on delete cascade,
-  template_id uuid references templates(id),
+  template_id uuid references templates(id) on delete set null,
   title text not null,
   content_markdown text not null,
   version integer default 1,
@@ -43,7 +44,7 @@ create table generated_docs (
 create table audit_logs (
   id uuid primary key default uuid_generate_v4(),
   organization_id uuid references organizations(id),
-  user_id uuid references auth.users(id),
+  user_id uuid references auth.users(id) on delete set null,
   action text not null,
   entity_type text,
   entity_id uuid,
@@ -55,7 +56,7 @@ create table audit_logs (
 create table organization_members (
   organization_id uuid not null references organizations(id) on delete cascade,
   user_id uuid not null references auth.users(id) on delete cascade,
-  role text not null check (role in ('admin', 'editor', 'viewer', 'approver')),
+  role org_role not null,
   created_at timestamp with time zone default now(),
   primary key (organization_id, user_id)
 );
@@ -110,7 +111,13 @@ create policy "Users can only see their own org" on organizations
 
 create policy "Org members can read templates" on templates
   for select
-  using (auth.uid() is not null);
+  using (
+    exists (
+      select 1
+      from organization_members om
+      where om.user_id = auth.uid()
+    )
+  );
 
 create policy "Users can access docs in their org" on generated_docs
   for all
