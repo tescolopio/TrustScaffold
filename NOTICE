@@ -1,0 +1,66 @@
+TrustScaffold
+Copyright 2026 TrustScaffold Contributors
+Licensed under the GNU Affero General Public License v3.0 (AGPLv3).
+
+This product includes third-party open-source software. All listed
+licenses are compatible with AGPLv3 distribution requirements.
+
+PRODUCTION DEPENDENCIES
+=======================
+
+Package                          Version   License      Repository
+-------------------------------  --------  -----------  ------------------------------------------
+@hookform/resolvers              3.10.x    MIT          https://github.com/react-hook-form/resolvers
+@octokit/rest                    21.x      MIT          https://github.com/octokit/rest.js
+@radix-ui/react-checkbox         1.1.x     MIT          https://github.com/radix-ui/primitives
+@radix-ui/react-dropdown-menu    2.1.x     MIT          https://github.com/radix-ui/primitives
+@radix-ui/react-label            2.1.x     MIT          https://github.com/radix-ui/primitives
+@radix-ui/react-progress         1.1.x     MIT          https://github.com/radix-ui/primitives
+@radix-ui/react-radio-group      1.2.x     MIT          https://github.com/radix-ui/primitives
+@radix-ui/react-slot             1.1.x     MIT          https://github.com/radix-ui/primitives
+@supabase/ssr                    0.5.x     MIT          https://github.com/supabase/auth-helpers
+@supabase/supabase-js            2.x       MIT          https://github.com/supabase/supabase-js
+class-variance-authority         0.7.x     Apache-2.0   https://github.com/joe-bell/cva
+clsx                             2.1.x     MIT          https://github.com/lukeed/clsx
+handlebars                       4.7.x     MIT          https://github.com/handlebars-lang/handlebars.js
+lucide-react                     0.468.x   ISC          https://github.com/lucide-icons/lucide
+next                             15.x      MIT          https://github.com/vercel/next.js
+react                            19.x      MIT          https://github.com/facebook/react
+react-dom                        19.x      MIT          https://github.com/facebook/react
+react-hook-form                  7.x       MIT          https://github.com/react-hook-form/react-hook-form
+react-markdown                   9.0.x     MIT          https://github.com/remarkjs/react-markdown
+sonner                           1.7.x     MIT          https://github.com/emilkowalski/sonner
+tailwind-merge                   2.5.x     MIT          https://github.com/dcastil/tailwind-merge
+zod                              3.x       MIT          https://github.com/colinhacks/zod
+zustand                          5.0.x     MIT          https://github.com/pmndrs/zustand
+
+DEVELOPMENT DEPENDENCIES
+========================
+
+Package                          Version   License      Repository
+-------------------------------  --------  -----------  ------------------------------------------
+@types/node                      22.x      MIT          https://github.com/DefinitelyTyped/DefinitelyTyped
+@types/react                     19.x      MIT          https://github.com/DefinitelyTyped/DefinitelyTyped
+@types/react-dom                 19.x      MIT          https://github.com/DefinitelyTyped/DefinitelyTyped
+autoprefixer                     10.x      MIT          https://github.com/postcss/autoprefixer
+eslint                           9.x       MIT          https://github.com/eslint/eslint
+eslint-config-next               15.x      MIT          https://github.com/vercel/next.js
+postcss                          8.x       MIT          https://github.com/postcss/postcss
+tailwindcss                      3.4.x     MIT          https://github.com/tailwindlabs/tailwindcss
+typescript                       5.x       Apache-2.0   https://github.com/microsoft/TypeScript
+
+LICENSE COMPATIBILITY SUMMARY
+=============================
+
+License        Count   AGPLv3 Compatible
+-------------  ------  -----------------
+MIT            30      Yes
+Apache-2.0     2       Yes
+ISC            1       Yes
+
+All production and development dependencies use permissive licenses
+(MIT, Apache-2.0, ISC) that are fully compatible with AGPLv3 distribution.
+
+No copyleft, GPL, LGPL, or SSPL dependencies were found.
+
+Last audited: 2026-04-19

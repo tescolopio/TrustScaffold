@@ -1,0 +1,8 @@
+node_modules/
+.next/
+.env.local
+tsconfig.tsbuildinfo
+
+# Supabase CLI / psql artifacts
+hable_*
+*.dump

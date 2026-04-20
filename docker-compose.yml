@@ -1,0 +1,39 @@
+###############################################################################
+# TrustScaffold — Self-Hosted Docker Compose
+#
+# Usage:
+#   cp .env.example .env          # fill in real secrets
+#   docker compose up -d --build
+#
+# This runs:
+#   1. The Next.js app (web) on port 3000
+#   2. Local Supabase stack via `supabase start` (or point to managed Supabase)
+#
+# For a managed Supabase instance, remove the 'db' service and set the
+# NEXT_PUBLIC_SUPABASE_URL / keys in .env to your hosted project.
+###############################################################################
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    environment:
+      - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET:-}
+      - AZURE_DEVOPS_PAT=${AZURE_DEVOPS_PAT:-}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
