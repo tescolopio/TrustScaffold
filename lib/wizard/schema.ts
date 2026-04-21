@@ -398,10 +398,58 @@ export const dataTypeOptions = [
 ] as const;
 
 export const tscOptions = [
-  { key: 'availability', label: 'Availability' },
-  { key: 'confidentiality', label: 'Confidentiality' },
-  { key: 'processingIntegrity', label: 'Processing Integrity' },
-  { key: 'privacy', label: 'Privacy' },
+  {
+    key: 'availability',
+    label: 'Availability',
+    criteriaCode: 'A1',
+    description: 'Ensures your system is available for operation and use as committed or agreed.',
+    triggers: [
+      'Your contracts include uptime SLAs (e.g., 99.9% availability)',
+      'Customers depend on your system for time-sensitive workflows',
+      'You maintain documented RTO / RPO targets',
+    ],
+    templateAdditions: 2,
+    templateNames: ['Business Continuity & Disaster Recovery Policy', 'Backup & Recovery Policy'],
+  },
+  {
+    key: 'confidentiality',
+    label: 'Confidentiality',
+    criteriaCode: 'C1',
+    description: 'Information designated as confidential is protected as committed or agreed.',
+    triggers: [
+      'You handle trade secrets, proprietary business data, or NDA-protected information',
+      'Customer contracts require explicit confidentiality controls beyond encryption',
+      'You operate in regulated industries where data classification is audited (finance, legal, healthcare)',
+    ],
+    templateAdditions: 2,
+    templateNames: ['Data Classification & Handling Policy', 'Encryption Policy'],
+  },
+  {
+    key: 'processingIntegrity',
+    label: 'Processing Integrity',
+    criteriaCode: 'PI1',
+    description: 'System processing is complete, valid, accurate, timely, and authorized.',
+    triggers: [
+      'Your system processes financial transactions, billing calculations, or payroll',
+      'Customers rely on your output data to make business-critical decisions',
+      'Errors in your system\'s output could cause material financial or operational harm',
+    ],
+    templateAdditions: 0,
+    templateNames: ['Covered via System Description (DC 200) scope statement'],
+  },
+  {
+    key: 'privacy',
+    label: 'Privacy',
+    criteriaCode: 'P1–P8',
+    description: 'Personal information is collected, used, retained, and disclosed in conformity with commitments.',
+    triggers: [
+      'You collect or process personal data from EU residents (GDPR), California consumers (CCPA), or Canadian residents (PIPEDA)',
+      'Your privacy policy commits to data subject rights (access, deletion, portability)',
+      'Customers ask whether you have a formal Privacy Notice aligned to AICPA privacy criteria',
+    ],
+    templateAdditions: 1,
+    templateNames: ['Privacy Notice & Consent Framework'],
+  },
 ] as const;
 
 export const infrastructureOptions = [

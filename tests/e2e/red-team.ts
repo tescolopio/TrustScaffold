@@ -381,7 +381,7 @@ test('SQL injection via PostgREST query params', async () => {
     .select('id')
     .filter('name', 'eq', "test'); DELETE FROM organizations WHERE ('1'='1");
   // PostgREST should either return empty results or a safe error
-  assert(error !== undefined || (data?.length ?? 0) === 0, 'SQL injection via filter should be safe');
+  assert(error !== undefined || ((data as unknown[] | null)?.length ?? 0) === 0, 'SQL injection via filter should be safe');
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════

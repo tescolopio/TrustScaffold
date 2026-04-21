@@ -8,6 +8,7 @@ import { useFieldArray, useForm, type FieldPath } from 'react-hook-form';
 import { toast } from 'sonner';
 
 import { compileDocsAction } from '@/app/actions/compile-docs';
+import { getExpectedTemplates } from '@/lib/wizard/template-manifest';
 import { useOrg } from '@/components/providers/org-provider';
 import { AuditorLensCallout } from '@/components/wizard/auditor-lens-callout';
 import { GapAnalysisCard } from '@/components/wizard/gap-analysis-card';
@@ -98,6 +99,108 @@ function StepShell({ title, description, children }: { title: string; descriptio
         <p className="mt-2 text-sm text-muted-foreground">{description}</p>
       </div>
       {children}
+    </div>
+  );
+}
+
+function GenerateStep({
+  watchedValues,
+  selectedTsc,
+  isGenerating,
+  onGenerate,
+}: {
+  watchedValues: WizardData;
+  selectedTsc: string[];
+  isGenerating: boolean;
+  onGenerate: () => void;
+}) {
+  const templates = getExpectedTemplates(watchedValues.tscSelections);
+  const [completedCount, setCompletedCount] = React.useState(0);
+
+  React.useEffect(() => {
+    if (!isGenerating) {
+      setCompletedCount(0);
+      return;
+    }
+    setCompletedCount(0);
+    let i = 0;
+    const interval = setInterval(() => {
+      i += 1;
+      setCompletedCount(i);
+      if (i >= templates.length - 1) clearInterval(interval);
+    }, Math.max(200, Math.round(4000 / templates.length)));
+    return () => clearInterval(interval);
+  }, [isGenerating, templates.length]);
+
+  const infra = [
+    ...(watchedValues.infrastructure.cloudProviders ?? []).map((p: string) => p.toUpperCase()),
+    ...(watchedValues.infrastructure.hostsOwnHardware ? ['On-premises'] : []),
+  ].join(', ') || watchedValues.infrastructure.type || '—';
+
+  return (
+    <div className="space-y-5">
+      {/* Context summary strip */}
+      <div className="grid gap-2 rounded-2xl bg-secondary/50 p-4 text-sm sm:grid-cols-3">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Scope</p>
+          <p className="mt-0.5 font-medium text-foreground">{selectedTsc.join(' · ')}</p>
+        </div>
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Infrastructure</p>
+          <p className="mt-0.5 font-medium text-foreground">{infra}</p>
+        </div>
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Vendors</p>
+          <p className="mt-0.5 font-medium text-foreground">{watchedValues.subservices.filter((s) => s.name).length} subservice{watchedValues.subservices.filter((s) => s.name).length !== 1 ? 's' : ''}</p>
+        </div>
+      </div>
+
+      {/* Pre-flight document list */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-semibold text-foreground">
+            {templates.length} document{templates.length !== 1 ? 's' : ''} will be generated
+          </p>
+          {isGenerating && (
+            <p className="text-xs text-muted-foreground">
+              {Math.min(completedCount, templates.length)} / {templates.length} compiled…
+            </p>
+          )}
+        </div>
+        <div className="divide-y divide-border rounded-2xl border border-border overflow-hidden">
+          {templates.map((t, i) => {
+            const done = isGenerating && i < completedCount;
+            const active = isGenerating && i === completedCount;
+            return (
+              <div
+                key={t.name}
+                className={cn(
+                  'flex items-center gap-3 px-4 py-2.5 text-sm transition-colors',
+                  done ? 'bg-emerald-50' : active ? 'bg-primary/5' : 'bg-white'
+                )}
+              >
+                <span className={cn(
+                  'flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold',
+                  done ? 'bg-emerald-500 text-white' : active ? 'bg-primary text-primary-foreground animate-pulse' : 'bg-secondary text-muted-foreground'
+                )}>
+                  {done ? <Check className="h-3 w-3" /> : i + 1}
+                </span>
+                <span className={cn('flex-1 font-medium', done ? 'text-emerald-800' : active ? 'text-foreground' : 'text-foreground/70')}>
+                  {t.name}
+                </span>
+                <Badge variant="outline" className="hidden px-1.5 py-0 text-[10px] sm:inline-flex">
+                  {t.criteriaHint}
+                </Badge>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <Button type="button" size="lg" className="w-full sm:w-auto" onClick={onGenerate} disabled={isGenerating}>
+        <Sparkles className="mr-2 h-4 w-4" />
+        {isGenerating ? `Compiling ${templates.length} documents…` : `Generate ${templates.length} policy documents`}
+      </Button>
     </div>
   );
 }
@@ -652,32 +755,85 @@ export function PolicyWizard() {
 
               {currentStep === 3 ? (
                 <StepShell
-                  title="TSC Selection"
-                  description="Security is always in scope. Choose the additional Trust Services Criteria that should determine which templates are compiled."
+                  title="Compliance Scope"
+                  description="Security (CC1–CC9) is always included. Choose additional Trust Services Criteria based on your contractual commitments and the nature of your data — each one adds specific policies and evidence requirements."
                 >
                   <div className="space-y-4">
-                    <Badge>Security is always enabled</Badge>
+                    {/* Always-on Security badge */}
+                    <div className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                      <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-emerald-500">
+                        <Check className="h-3 w-3 text-white" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-emerald-800">Security (CC1–CC9) — always included</p>
+                        <p className="mt-0.5 text-xs text-emerald-700">
+                          Covers logical access controls, change management, risk assessment, incident response, and monitoring. Required for every SOC 2 engagement regardless of scope.
+                          Compiles <strong>13 core policy templates</strong> plus the Evidence Checklist and System Description.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Optional TSC decision cards */}
+                    <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Optional criteria — select all that apply</p>
                     <div className="grid gap-3 md:grid-cols-2">
                       {tscOptions.map((option) => (
                         <FormField
                           key={option.key}
                           control={form.control}
                           name={`tscSelections.${option.key}` as FieldPath<WizardData>}
-                          render={({ field }) => (
-                            <FormItem className="flex items-center gap-3 rounded-2xl border border-border bg-white p-4">
-                              <FormControl>
-                                <Checkbox checked={Boolean(field.value)} onCheckedChange={(checked) => field.onChange(Boolean(checked))} />
-                              </FormControl>
-                              <div>
-                                <FormLabel className="font-medium">{option.label}</FormLabel>
-                              </div>
-                            </FormItem>
-                          )}
+                          render={({ field }) => {
+                            const selected = Boolean(field.value);
+                            return (
+                              <FormItem
+                                className={cn(
+                                  'relative rounded-2xl border bg-white p-4 transition-colors',
+                                  selected ? 'border-primary/50 bg-primary/5' : 'border-border'
+                                )}
+                              >
+                                <div className="flex items-start gap-3">
+                                  <FormControl>
+                                    <Checkbox
+                                      checked={selected}
+                                      onCheckedChange={(checked) => field.onChange(Boolean(checked))}
+                                      className="mt-0.5"
+                                    />
+                                  </FormControl>
+                                  <div className="space-y-2">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <FormLabel className="text-sm font-semibold leading-none">{option.label}</FormLabel>
+                                      <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-mono">{option.criteriaCode}</Badge>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">{option.description}</p>
+                                    <div className="space-y-1">
+                                      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Include this if:</p>
+                                      <ul className="space-y-0.5">
+                                        {option.triggers.map((trigger) => (
+                                          <li key={trigger} className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                                            <span className="mt-1 h-1 w-1 shrink-0 rounded-full bg-muted-foreground/50" />
+                                            {trigger}
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                    {option.templateAdditions > 0 ? (
+                                      <p className={cn('text-[10px] font-medium', selected ? 'text-primary' : 'text-muted-foreground')}>
+                                        +{option.templateAdditions} template{option.templateAdditions !== 1 ? 's' : ''}: {option.templateNames.join(', ')}
+                                      </p>
+                                    ) : (
+                                      <p className="text-[10px] text-muted-foreground">{option.templateNames[0]}</p>
+                                    )}
+                                  </div>
+                                </div>
+                              </FormItem>
+                            );
+                          }}
                         />
                       ))}
                     </div>
-                    <div className="rounded-2xl bg-secondary/60 p-4 text-sm text-muted-foreground">
-                      Selected: {selectedTsc.join(', ')}
+
+                    <div className="rounded-2xl bg-secondary/60 p-3 text-sm">
+                      <span className="font-medium text-foreground">Selected scope: </span>
+                      <span className="text-muted-foreground">{selectedTsc.join(' · ')}</span>
                     </div>
                   </div>
                 </StepShell>
@@ -2099,24 +2255,14 @@ export function PolicyWizard() {
               {currentStep === 9 ? (
                 <StepShell
                   title="Generate Policies"
-                  description="The final step compiles the selected templates on the server and inserts org-scoped drafts into generated_docs."
+                  description="Review what will be compiled, then generate your org-scoped policy drafts and evidence checklist."
                 >
-                  <div className="space-y-4">
-                    <div className="rounded-2xl bg-secondary/60 p-4 text-sm text-muted-foreground">
-                      <p className="font-medium text-foreground">Generation summary</p>
-                      <p className="mt-2">Selected TSCs: {selectedTsc.join(', ')}</p>
-                      <p>Infrastructure: {watchedValues.infrastructure.cloudProviders?.join(', ') || watchedValues.infrastructure.type}{watchedValues.infrastructure.hostsOwnHardware ? ' + on-premises' : ''}</p>
-                      <p>Identity provider: {watchedValues.infrastructure.idpProvider}</p>
-                      <p>VCS provider: {watchedValues.operations.vcsProvider}</p>
-                      <p>HRIS provider: {watchedValues.operations.hrisProvider}</p>
-                      <p>Subservices: {watchedValues.subservices.length}</p>
-                      <p>Outputs: policy drafts plus the operational evidence checklist.</p>
-                    </div>
-                    <Button type="button" size="lg" className="w-full sm:w-auto" onClick={generatePolicies} disabled={isGenerating}>
-                      <Sparkles className="mr-2 h-4 w-4" />
-                      {isGenerating ? 'Generating drafts...' : 'Generate policies'}
-                    </Button>
-                  </div>
+                  <GenerateStep
+                    watchedValues={watchedValues as WizardData}
+                    selectedTsc={selectedTsc}
+                    isGenerating={isGenerating}
+                    onGenerate={generatePolicies}
+                  />
                 </StepShell>
               ) : null}
             </CardContent>
