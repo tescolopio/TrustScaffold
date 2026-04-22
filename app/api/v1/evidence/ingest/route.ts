@@ -100,7 +100,18 @@ function validatePayload(body: unknown): { ok: true; data: IngestPayload } | { o
   };
 }
 
+const MAX_PAYLOAD_BYTES = 50 * 1024 * 1024; // 50 MB
+
 export async function POST(request: NextRequest) {
+  // Reject oversized payloads before reading the body
+  const contentLength = Number(request.headers.get('content-length') ?? 0);
+  if (contentLength > MAX_PAYLOAD_BYTES) {
+    return NextResponse.json(
+      { error: `Payload too large. Maximum allowed size is ${MAX_PAYLOAD_BYTES / 1024 / 1024} MB.` },
+      { status: 413 },
+    );
+  }
+
   // Extract Bearer token
   const authHeader = request.headers.get('authorization');
   if (!authHeader?.startsWith('Bearer ')) {

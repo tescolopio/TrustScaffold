@@ -64,23 +64,24 @@ export async function compileDocsAction(rawWizardData: WizardData): Promise<Comp
     wizard_data: parsed.data,
   };
 
-  const docs: CompiledDocument[] = templates.map((template) => {
-    const mergedVariables = {
-      ...(template.default_variables ?? {}),
-      ...payload,
-    };
-
-    return {
-      organization_id: organization.id,
-      template_id: template.id,
-      title: template.name,
-      file_name: renderTemplate(template.output_filename_pattern, mergedVariables),
-      content_markdown: renderTemplate(template.markdown_template, mergedVariables),
-      input_payload: parsed.data,
-      status: 'draft',
-      version: 1,
-    };
-  });
+  const docs: CompiledDocument[] = [];
+  for (const template of templates) {
+    const mergedVariables = { ...(template.default_variables ?? {}), ...payload };
+    try {
+      docs.push({
+        organization_id: organization.id,
+        template_id: template.id,
+        title: template.name,
+        file_name: renderTemplate(template.output_filename_pattern, mergedVariables, template.name),
+        content_markdown: renderTemplate(template.markdown_template, mergedVariables, template.name),
+        input_payload: parsed.data,
+        status: 'draft',
+        version: 1,
+      });
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : `Failed to render ${template.name}` };
+    }
+  }
 
   const { data: existingDocs, error: existingDocsError } = await supabase
     .from('generated_docs')

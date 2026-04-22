@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
 
-import { approveGeneratedDocAction, archiveGeneratedDocAction } from '@/app/(dashboard)/generated-docs/actions';
+import { approveGeneratedDocAction, archiveGeneratedDocAction, regenerateDocAction } from '@/app/(dashboard)/generated-docs/actions';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -45,6 +45,7 @@ export default async function GeneratedDocDetailPage({
   const templateRelation = Array.isArray(doc.templates) ? doc.templates[0] : doc.templates;
   const canApprove = ['admin', 'approver'].includes(context.organization.role) && doc.status !== 'approved';
   const canArchive = context.organization.role === 'admin' && doc.status !== 'archived';
+  const canRegenerate = ['admin', 'editor'].includes(context.organization.role);
   const renderedMarkdown = stripFrontmatter(doc.content_markdown);
 
   return (
@@ -71,6 +72,14 @@ export default async function GeneratedDocDetailPage({
               <form action={approveGeneratedDocAction}>
                 <input type="hidden" name="document_id" value={doc.id} />
                 <Button type="submit">Approve</Button>
+              </form>
+            ) : null}
+            {canRegenerate ? (
+              <form action={regenerateDocAction}>
+                <input type="hidden" name="document_id" value={doc.id} />
+                <Button type="submit" variant="secondary" title="Re-render this document from the wizard data stored at last generation">
+                  Regenerate
+                </Button>
               </form>
             ) : null}
             {canArchive ? (

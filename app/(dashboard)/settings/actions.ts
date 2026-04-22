@@ -53,6 +53,31 @@ export async function saveIntegrationAction(formData: FormData) {
     redirect(buildSettingsRoute(`error=${encodeURIComponent(existingError.message)}`));
   }
 
+  // Validate the token against the provider API before storing it
+  if (token.trim()) {
+    if (provider === 'github') {
+      const resp = await fetch('https://api.github.com/user', {
+        headers: { Authorization: `Bearer ${token}`, 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'TrustScaffold' },
+      });
+      if (!resp.ok) {
+        redirect(buildSettingsRoute('error=GitHub+token+is+invalid+or+expired.+Verify+the+PAT+in+GitHub+Settings.'));
+      }
+      const scopeHeader = resp.headers.get('x-oauth-scopes') ?? '';
+      const scopes = scopeHeader.split(',').map((s) => s.trim()).filter(Boolean);
+      if (!scopes.includes('repo') && !scopes.some((s) => s.startsWith('repo'))) {
+        redirect(buildSettingsRoute(`error=${encodeURIComponent(`Token validated but missing 'repo' scope. Found: ${scopes.join(', ') || 'none'}`)}`));
+      }
+    } else if (provider === 'azure_devops') {
+      const b64 = Buffer.from(`:${token}`).toString('base64');
+      const resp = await fetch(`https://dev.azure.com/${encodeURIComponent(repoOwner)}/_apis/projects?api-version=7.0`, {
+        headers: { Authorization: `Basic ${b64}` },
+      });
+      if (!resp.ok) {
+        redirect(buildSettingsRoute('error=Azure+DevOps+PAT+is+invalid+or+lacks+Code+(Read+%26+Write)+scope.'));
+      }
+    }
+  }
+
   const encryptedToken = token.trim() ? encryptIntegrationToken(token) : existing?.encrypted_token ?? null;
 
   const { error } = await supabase.from('organization_integrations').upsert(

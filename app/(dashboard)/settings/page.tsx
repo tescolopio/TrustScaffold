@@ -137,12 +137,19 @@ export default async function SettingsPage({
                         <Button type="submit" size="sm" variant="ghost">Delete integration</Button>
                       </form>
                       {integration.provider === 'github' ? (
-                        <form action={generateWebhookSecretAction}>
-                          <input type="hidden" name="integration_id" value={integration.id} />
-                          <Button type="submit" size="sm" variant="secondary">
-                            {integration.webhook_secret ? 'Rotate' : 'Generate'} webhook secret
-                          </Button>
-                        </form>
+                        <div className="space-y-2">
+                          <form action={generateWebhookSecretAction}>
+                            <input type="hidden" name="integration_id" value={integration.id} />
+                            <Button type="submit" size="sm" variant="secondary">
+                              {integration.webhook_secret ? 'Rotate' : 'Generate'} webhook secret
+                            </Button>
+                          </form>
+                          {integration.webhook_secret ? (
+                            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                              <strong>Before rotating:</strong> update the webhook secret in GitHub → repo Settings → Webhooks within 10 minutes or deliveries will fail with signature errors.
+                            </p>
+                          ) : null}
+                        </div>
                       ) : null}
                     </div>
                   ) : null}

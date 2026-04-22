@@ -6,6 +6,10 @@ import { redirect } from 'next/navigation';
 
 import { exportApprovedDocsToAzureDevOpsAction } from '@/app/actions/export-to-azure-devops';
 import { exportApprovedDocsToGithubAction } from '@/app/actions/export-to-github';
+import { renderTemplate } from '@/lib/documents/template-engine';
+import { getDashboardContext } from '@/lib/auth/get-dashboard-context';
+import { buildTemplatePayload } from '@/lib/wizard/template-payload';
+import { wizardSchema } from '@/lib/wizard/schema';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
 
 async function getDocumentAndRole(documentId: string) {
@@ -183,6 +187,66 @@ export async function archiveSelectedGeneratedDocsAction(formData: FormData) {
 
   revalidatePath('/generated-docs');
   redirect(buildGeneratedDocsRoute(`success=Archived%20${docs.length}%20document${docs.length === 1 ? '' : 's'}`));
+}
+
+export async function regenerateDocAction(formData: FormData) {
+  const documentId = String(formData.get('document_id') ?? '').trim();
+  if (!documentId) redirect('/generated-docs?error=Missing%20document%20identifier');
+
+  const context = await getDashboardContext();
+  if (!context?.organization) redirect('/login');
+  if (!['admin', 'editor'].includes(context.organization.role)) {
+    redirect(buildGeneratedDocRoute(documentId, 'error=Only%20admins%20and%20editors%20can%20regenerate%20documents'));
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data: doc, error: docError } = await supabase
+    .from('generated_docs')
+    .select('id, template_id, input_payload, version, templates(name, output_filename_pattern, markdown_template, default_variables)')
+    .eq('id', documentId)
+    .eq('organization_id', context.organization.id)
+    .single();
+
+  if (docError || !doc) {
+    redirect(buildGeneratedDocRoute(documentId, 'error=Document+not+found'));
+  }
+
+  const template = Array.isArray(doc.templates) ? doc.templates[0] : doc.templates;
+  if (!template) redirect(buildGeneratedDocRoute(documentId, 'error=Template+not+found'));
+
+  const parsed = wizardSchema.safeParse(doc.input_payload);
+  if (!parsed.success) {
+    redirect(buildGeneratedDocRoute(documentId, 'error=Stored+wizard+payload+is+invalid+-+re-run+the+full+wizard'));
+  }
+
+  const payload = { ...buildTemplatePayload(parsed.data), wizard_data: parsed.data };
+  const mergedVariables = { ...(template.default_variables ?? {}), ...payload };
+
+  let newFilename: string;
+  let newContent: string;
+  try {
+    newFilename = renderTemplate(template.output_filename_pattern, mergedVariables, template.name);
+    newContent = renderTemplate(template.markdown_template, mergedVariables, template.name);
+  } catch (err) {
+    redirect(buildGeneratedDocRoute(documentId, `error=${encodeURIComponent(err instanceof Error ? err.message : 'Render failed')}`));
+  }
+
+  const { error: updateError } = await supabase
+    .from('generated_docs')
+    .update({ file_name: newFilename, content_markdown: newContent, status: 'draft' })
+    .eq('id', documentId);
+
+  if (updateError) redirect(buildGeneratedDocRoute(documentId, `error=${encodeURIComponent(updateError.message)}`));
+
+  await supabase.rpc('insert_document_revision', {
+    p_document_id: documentId,
+    p_source: 'generated',
+    p_content_markdown: newContent,
+  });
+
+  revalidatePath(`/generated-docs/${documentId}`);
+  revalidatePath('/generated-docs');
+  redirect(buildGeneratedDocRoute(documentId, 'success=Document+regenerated+from+saved+wizard+data'));
 }
 
 export async function exportToGithubFromDashboardAction(formData: FormData) {
