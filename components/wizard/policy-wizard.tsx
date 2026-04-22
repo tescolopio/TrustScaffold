@@ -8,6 +8,7 @@ import { useFieldArray, useForm, type FieldPath } from 'react-hook-form';
 import { toast } from 'sonner';
 
 import { compileDocsAction } from '@/app/actions/compile-docs';
+import { saveWizardDraftAction, loadWizardDraftAction } from '@/app/actions/wizard-draft';
 import { getExpectedTemplates } from '@/lib/wizard/template-manifest';
 import { useOrg } from '@/components/providers/org-provider';
 import { AuditorLensCallout } from '@/components/wizard/auditor-lens-callout';
@@ -246,6 +247,7 @@ export function PolicyWizard() {
     name: 'subservices',
   });
 
+  const [draftSyncStatus, setDraftSyncStatus] = React.useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const watchedInfrastructure = form.watch('infrastructure.type');
   const watchedCloudProviders = form.watch('infrastructure.cloudProviders') ?? [];
   const watchedHostsOwnHardware = form.watch('infrastructure.hostsOwnHardware') ?? false;
@@ -266,10 +268,21 @@ export function PolicyWizard() {
     }
 
     if (!hasLoadedPersistedDraft.current) {
-      form.reset(data);
       hasLoadedPersistedDraft.current = true;
+
+      // Try to load server-side draft. If it's newer than localStorage, prefer it.
+      loadWizardDraftAction().then((result) => {
+        if (result.ok && result.payload) {
+          setData(result.payload);
+          setCurrentStep(result.currentStep);
+          form.reset(result.payload);
+          setDraftSyncStatus('saved');
+        } else {
+          form.reset(data);
+        }
+      });
     }
-  }, [data, form, hasHydrated, organization, organizationId, reset, setOrganization]);
+  }, [data, form, hasHydrated, organization, organizationId, reset, setCurrentStep, setData, setOrganization]);
 
   useEffect(() => {
     const subscription = form.watch((value) => {
@@ -324,7 +337,14 @@ export function PolicyWizard() {
       }
     }
 
-    setCurrentStep(Math.min(currentStep + 1, wizardStepTitles.length - 1));
+    const nextStep = Math.min(currentStep + 1, wizardStepTitles.length - 1);
+    setCurrentStep(nextStep);
+
+    // Persist draft server-side on every step advance
+    setDraftSyncStatus('saving');
+    saveWizardDraftAction(form.getValues(), nextStep).then((result) => {
+      setDraftSyncStatus(result.ok ? 'saved' : 'error');
+    });
   }
 
   function goToPreviousStep() {
@@ -412,6 +432,18 @@ export function PolicyWizard() {
             <p className="font-medium">Active org</p>
             <p className="mt-2 break-all text-xs">{organization.name}</p>
             <p className="break-all text-xs opacity-80">{organization.id}</p>
+            <p className={cn(
+              'mt-2 text-[10px] font-medium uppercase tracking-wide',
+              draftSyncStatus === 'saved'  && 'text-emerald-600',
+              draftSyncStatus === 'saving' && 'text-amber-500',
+              draftSyncStatus === 'error'  && 'text-red-500',
+              draftSyncStatus === 'idle'   && 'text-muted-foreground/60',
+            )}>
+              {draftSyncStatus === 'saved'  && '✓ Draft saved to server'}
+              {draftSyncStatus === 'saving' && '⟳ Saving draft…'}
+              {draftSyncStatus === 'error'  && '✗ Save failed — localStorage only'}
+              {draftSyncStatus === 'idle'   && 'Draft in local storage'}
+            </p>
           </div>
         </CardContent>
       </Card>
