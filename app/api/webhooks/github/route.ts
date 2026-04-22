@@ -4,6 +4,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { Octokit } from '@octokit/rest';
 
 import { decryptIntegrationToken } from '@/lib/integrations/token-crypto';
+import { applyRateLimit, webhookLimiter } from '@/lib/rate-limit';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase-service';
 
 /**
@@ -78,6 +79,10 @@ export async function POST(request: NextRequest) {
   if (!verifySignature(rawBody, signature, integration.webhook_secret)) {
     return NextResponse.json({ error: 'Invalid webhook signature' }, { status: 403 });
   }
+
+  // Per-org rate limit: 60 webhook events/minute
+  const rateLimitResponse = await applyRateLimit(webhookLimiter(), integration.organization_id);
+  if (rateLimitResponse) return rateLimitResponse;
 
   // Route by event type
   if (event === 'pull_request') {

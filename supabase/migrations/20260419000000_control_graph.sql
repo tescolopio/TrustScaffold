@@ -280,7 +280,9 @@ begin
     on conflict (id) do nothing;
 
     execute format(
-      'create policy if not exists %I on storage.objects for all using (bucket_id = %L) with check (bucket_id = %L)',
+      'do $p$ begin if not exists (select 1 from pg_policies where schemaname = %L and tablename = %L and policyname = %L) then '
+      'create policy %I on storage.objects for all using (bucket_id = %L) with check (bucket_id = %L); end if; end $p$',
+      'storage', 'objects', 'Service role can manage evidence storage',
       'Service role can manage evidence storage', 'evidence', 'evidence'
     );
   else

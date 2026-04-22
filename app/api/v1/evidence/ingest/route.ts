@@ -4,6 +4,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 
 import { canonicalize } from '@/lib/evidence/canonicalize';
 import { normalizePayload } from '@/lib/evidence/scanner-normalizers';
+import { applyRateLimit, evidenceLimiter } from '@/lib/rate-limit';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase-service';
 
 /**
@@ -155,6 +156,10 @@ export async function POST(request: NextRequest) {
   if (!scopes.includes('evidence:write')) {
     return NextResponse.json({ error: 'API key lacks evidence:write scope' }, { status: 403 });
   }
+
+  // Per-org rate limit: 120 requests/minute
+  const rateLimitResponse = await applyRateLimit(evidenceLimiter(), apiKeyRow.organization_id);
+  if (rateLimitResponse) return rateLimitResponse;
 
   // Update last_used_at
   await supabase

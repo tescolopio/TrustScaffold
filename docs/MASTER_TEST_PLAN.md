@@ -2,7 +2,7 @@
 
 > **Audience:** Internal Developers, QA, and Red Team Leads
 > **Status:** Pre-Launch
-> **Last Updated:** 2026-04-19
+> **Last Updated:** 2026-04-22
 
 ---
 
@@ -57,21 +57,20 @@ npx supabase@latest start
   PGPASSWORD=postgres psql 'postgresql://postgres@127.0.0.1:54322/postgres' \
     -c "select count(*) from public.templates;"
   ```
-  Expected result: `16`.
+  Expected result: `18`.
 
 ### 0.3 Configure Environment
 
 **Steps:**
 ```bash
-# Extract keys from supabase status and create .env.local
-cat > .env.local << 'EOF'
-NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
-NEXT_PUBLIC_SUPABASE_ANON_KEY=<PUBLISHABLE_KEY from supabase status>
-SUPABASE_SERVICE_ROLE_KEY=<SERVICE_ROLE_KEY from supabase status>
-EOF
+bash scripts/setup.sh
 ```
 
-**Expected:** `.env.local` exists in project root with all 3 required variables populated.
+The setup script detects Supabase service URLs and keys automatically, scans ports 3000–3009 for the first free port, and writes `.env.local` with all required variables. If port 3000 is occupied (e.g., by Grafana or another service) it assigns the next available port and prints the correct URL.
+
+**Expected:**
+- `.env.local` exists in project root with `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, and `PORT` populated.
+- Script outputs the assigned dev URL, e.g. `http://localhost:3001/signup`.
 
 ### 0.4 Build Verification
 
@@ -90,11 +89,13 @@ npm run build
 
 **Steps:**
 ```bash
+# Read PORT from .env.local (default 3000 if unset)
+PORT=$(grep '^PORT=' .env.local 2>/dev/null | cut -d= -f2); PORT=${PORT:-3000}
 npm run dev &
 sleep 5
-curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/
-curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/login
-curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/signup
+curl -s -o /dev/null -w '%{http_code}' "http://localhost:${PORT}/"
+curl -s -o /dev/null -w '%{http_code}' "http://localhost:${PORT}/login"
+curl -s -o /dev/null -w '%{http_code}' "http://localhost:${PORT}/signup"
 ```
 
 **Expected:**
@@ -105,7 +106,7 @@ curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/signup
 ### 0.6 Signup Flow — New User Creates Organization
 
 **Steps:**
-1. Open `http://localhost:3000/signup` in a browser.
+1. Open the URL printed by `setup.sh` (e.g., `http://localhost:3001/signup`) in a browser.
 2. Enter a fresh email (e.g., `coldstart@test.local`), password `TestPassword1!`, and organization name `Cold Start Corp`.
 3. Submit the form.
 
@@ -130,14 +131,29 @@ Expected: One row with `admin` role under `Cold Start Corp`.
 
 **Steps:**
 1. Navigate to `/wizard`.
-2. Complete all 7 wizard steps with minimal input (Security TSC only, single cloud provider).
-3. Click Generate.
+2. On Step 0 (Company Info), select:
+   - Org age: `< 1 year`
+   - Compliance maturity: `First time — we're just getting started`
+   - Audit type guidance is shown; select `Type I` or leave as recommended.
+3. Complete all remaining steps with minimal input (Security TSC only, single cloud provider).
+4. Click Generate.
 
 **Expected:**
-- Server-side Handlebars compilation succeeds.
+- Step 0 displays org age, maturity, and audit type fields.
+- Server-side Handlebars compilation succeeds for all templates; any render error shows template name in the error message.
 - User is redirected to `/generated-docs`.
 - Draft documents appear (at minimum: Information Security Policy, Access Control Policy, SDLC Policy, System Description).
 - No Handlebars `{{` expressions remain in rendered output.
+- Each generated doc detail page shows a **Regenerate** button for admin/editor roles.
+
+**Draft persistence check:**
+- Advance to Step 2, then close the browser and reopen `/wizard`.
+- Draft is restored from the server (`wizard_drafts` table) — verify step and data are correct even if localStorage is cleared.
+
+**Single-doc regeneration check:**
+- Open any generated doc at `/generated-docs/<id>`.
+- Click **Regenerate**.
+- Verify doc content refreshes (status resets to `draft`) and a new `document_revisions` row appears with `source = 'generated'`.
 
 ### 0.8 E2E Suite — Full Pass
 
@@ -362,7 +378,7 @@ and Processing Integrity-specific templates are excluded.
 
 **Scenario:** Run wizard with all 5 TSC categories enabled.
 
-**Expected:** All 16 templates are compiled (including evidence-checklist
+**Expected:** All 18 templates are compiled (including evidence-checklist
 and system-description).
 
 ### 4.5 Hybrid / Physical Logic
@@ -396,6 +412,25 @@ and all TSC categories.
 **Expected:** Vendor management and system description templates render
 cleanly with "No sub-service organizations" or equivalent. No Handlebars
 errors or unresolved `{{` expressions.
+
+### 4.9 Wizard Maturity — First-Timer Guidance
+
+**Scenario:** Run wizard with `complianceMaturity = 'first-time'`.
+
+**Expected:**
+- Step 1 shows a blue "first time" callout banner.
+- Gap analysis uses blue styling and "not yet implemented" language instead of red/amber "gaps".
+- "Start in Security Assessment" CTA appears instead of "Fix in Security Assessment".
+- `acknowledgementCadence` and `trainingCadence` accept `'not-yet'` without validation errors.
+
+### 4.10 Wizard Draft Server Persistence
+
+**Scenario:** Advance to wizard step 3, then clear localStorage and reload.
+
+**Expected:**
+- `wizard_drafts` table has a row for this organization with `current_step = 3`.
+- On reload, `loadWizardDraftAction()` returns the saved draft; user is placed back at step 3 with data intact.
+- Draft survives changing the dev server port (since server state is org-scoped, not cookie/localStorage-scoped).
 
 ### 4.8 Content Revision Creation
 
@@ -705,8 +740,14 @@ Before handing the environment to the red team, verify:
 - [ ] **Service role key NOT shared.** Red team operates only with
       user-level credentials and API keys. Service role access simulates
       a DBA-level insider threat test only if explicitly scoped.
-- [ ] **Rate limiting reviewed.** Confirm Vercel/Cloudflare rate limits
-      are configured on `/api/v1/evidence/ingest` and `/api/webhooks/github`.
+- [ ] **Rate limiting reviewed.** Confirm Vercel/Cloudflare rate limits are
+      configured on `/api/v1/evidence/ingest` and `/api/webhooks/github`.
+      The ingest route enforces a 50 MB per-request payload cap (HTTP 413 if exceeded)
+      but does not yet implement per-org request-rate limits — this is a known gap
+      that must be addressed before production launch.
+- [ ] **Integration token validation verified.** GitHub and Azure DevOps tokens
+      are validated against the upstream API before being stored. Confirm that
+      supplying an invalid token surfaces a clear error rather than encrypting junk.
 - [ ] **Webhook secret rotated.** Generate a fresh secret for the staging
       environment's webhook integration.
 - [ ] **Token encryption key unique to staging.** `SUPABASE_SERVICE_ROLE_KEY`
@@ -786,6 +827,9 @@ Maps each test case to the V1.0 DoD section it validates:
 | 4.2 Re-Run | §2 Idempotency | generated_docs, document_revisions |
 | 4.5 Physical Logic | §2 Template Logic | generated_docs |
 | 4.6 DC 200 | §2 System Description | generated_docs |
+| 4.9 First-Timer Maturity | §2 Wizard UX | wizard_drafts |
+| 4.10 Draft Persistence | §2 Wizard Persistence | wizard_drafts |
+| 0.7 Single-Doc Regen | §2 Regeneration | generated_docs, document_revisions |
 | 5.1 Export | §3 GitOps | generated_docs, document_revisions |
 | 5.2 Forge Webhook | §3 Webhook Security | — (no mutation) |
 | 5.4 Unmod Merge | §3 Merge Detection | vcs_merge_events |
