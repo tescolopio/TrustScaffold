@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useRef, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Check, ChevronDown, ChevronUp, Circle, CircleDashed, Plus, Sparkles, Trash2 } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, Circle, CircleDashed, Info, Plus, Sparkles, Trash2, Users, Building2 } from 'lucide-react';
 import { useFieldArray, useForm, type FieldPath } from 'react-hook-form';
 import { toast } from 'sonner';
 
@@ -25,6 +25,7 @@ import {
   SHOW_ME_HOW_AWS_SCPs,
 } from '@/components/wizard/show-me-how';
 import { Badge } from '@/components/ui/badge';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -824,59 +825,121 @@ export function PolicyWizard() {
                   title="System Scope"
                   description="Define the product and data boundary that the generated policies should describe."
                 >
-                  <div className="grid gap-4">
+                  <div className="grid gap-6">
+
+                    {/* System Name */}
                     <FormField
                       control={form.control}
                       name="scope.systemName"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>In-scope system name</FormLabel>
+                          <FormLabel>In-scope system name <span className="text-destructive">*</span></FormLabel>
                           <FormControl>
-                            <Input {...field} />
+                            <Input {...field} placeholder="e.g. Acme Cloud Platform" />
                           </FormControl>
+                          <FormDescription>
+                            This is the formal name that appears throughout every generated policy and your SOC 2 System Description.
+                            Use your product&apos;s market name — not your company name.
+                            <span className="mt-1 block text-xs text-muted-foreground/70">Example: &ldquo;TrustScaffold Cloud&rdquo; not &ldquo;TrustScaffold Inc.&rdquo;</span>
+                          </FormDescription>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
+
+                    {/* System Description */}
                     <FormField
                       control={form.control}
                       name="scope.systemDescription"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>System description</FormLabel>
+                          <FormLabel>System description <span className="text-destructive">*</span></FormLabel>
                           <FormControl>
-                            <Textarea {...field} />
+                            <Textarea {...field} rows={4} placeholder="e.g. A multi-tenant SaaS platform that enables security teams to generate and manage SOC 2 policy documentation. Processes organization metadata and compliance questionnaire data on behalf of B2B customers." />
                           </FormControl>
-                          <FormDescription>Describe what the system does, who uses it, and what data flows through it.</FormDescription>
+                          <FormDescription>
+                            Auditors read this verbatim. Include: <strong>what the system does</strong>, <strong>who the users are</strong> (internal staff, B2B customers, consumers), and <strong>what types of data flow through it</strong>.
+                            Keep it to 2–4 sentences — specific but not exhaustive.
+                          </FormDescription>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
+
+                    {/* Data Types */}
                     <FormField
                       control={form.control}
                       name="scope.dataTypesHandled"
                       render={() => (
                         <FormItem>
-                          <FormLabel>Data types handled</FormLabel>
+                          <div className="mb-2 space-y-1">
+                            <FormLabel>Data types handled</FormLabel>
+                            <p className="text-sm text-muted-foreground">
+                              Select every category your system stores, processes, or transmits — even indirectly.
+                              Click <Info className="inline h-3.5 w-3.5 text-muted-foreground" /> to understand what each type includes and how it affects your audit scope.
+                            </p>
+                          </div>
                           <div className="grid gap-3 md:grid-cols-2">
                             {dataTypeOptions.map((option) => (
                               <FormField
-                                key={option}
+                                key={option.label}
                                 control={form.control}
                                 name="scope.dataTypesHandled"
                                 render={({ field }) => (
-                                  <FormItem className="flex items-center gap-3 rounded-2xl border border-border bg-white p-3">
+                                  <FormItem className="flex items-start gap-3 rounded-2xl border border-border bg-white p-3 transition-colors hover:border-primary/30">
                                     <FormControl>
                                       <Checkbox
-                                        checked={field.value.includes(option)}
+                                        className="mt-0.5"
+                                        checked={field.value.includes(option.label)}
                                         onCheckedChange={(checked) => {
                                           field.onChange(
-                                            checked ? [...field.value, option] : field.value.filter((value) => value !== option)
+                                            checked
+                                              ? [...field.value, option.label]
+                                              : field.value.filter((v) => v !== option.label),
                                           );
                                         }}
                                       />
                                     </FormControl>
-                                    <FormLabel className="font-medium">{option}</FormLabel>
+                                    <div className="min-w-0 flex-1">
+                                      <div className="flex items-center gap-1.5">
+                                        <FormLabel className="font-medium leading-none">{option.label}</FormLabel>
+                                        {option.triggersPrivacy ? (
+                                          <Badge className="bg-purple-100 text-purple-700 text-[9px] px-1.5 py-0">Triggers Privacy TSC</Badge>
+                                        ) : null}
+                                        <Popover>
+                                          <PopoverTrigger asChild>
+                                            <button
+                                              type="button"
+                                              className="ml-auto rounded p-0.5 text-muted-foreground hover:text-foreground focus:outline-none"
+                                              aria-label={`Learn about ${option.label}`}
+                                            >
+                                              <Info className="h-3.5 w-3.5" />
+                                            </button>
+                                          </PopoverTrigger>
+                                          <PopoverContent side="right" align="start" className="space-y-3">
+                                            <div>
+                                              <p className="text-sm font-semibold text-foreground">{option.label}</p>
+                                              <p className="mt-1 text-xs text-muted-foreground">{option.description}</p>
+                                            </div>
+                                            <div>
+                                              <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Examples</p>
+                                              <ul className="mt-1 space-y-0.5">
+                                                {option.examples.map((ex) => (
+                                                  <li key={ex} className="flex items-start gap-1.5 text-xs text-foreground">
+                                                    <span className="mt-1 h-1 w-1 shrink-0 rounded-full bg-primary/40" />
+                                                    {ex}
+                                                  </li>
+                                                ))}
+                                              </ul>
+                                            </div>
+                                            <div className="rounded-xl border border-amber-200 bg-amber-50 p-2.5">
+                                              <p className="text-xs font-semibold text-amber-800">SOC 2 note</p>
+                                              <p className="mt-0.5 text-xs text-amber-700">{option.socNote}</p>
+                                            </div>
+                                          </PopoverContent>
+                                        </Popover>
+                                      </div>
+                                    </div>
                                   </FormItem>
                                 )}
                               />
@@ -886,25 +949,57 @@ export function PolicyWizard() {
                         </FormItem>
                       )}
                     />
+
+                    {/* Deployment Model */}
                     <FormField
                       control={form.control}
                       name="scope.isMultiTenant"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Deployment model</FormLabel>
-                          <RadioGroup value={field.value ? 'multi' : 'single'} onValueChange={(value) => field.onChange(value === 'multi')}>
-                            <div className="flex items-center gap-3 rounded-2xl border border-border bg-white p-3">
-                              <RadioGroupItem value="multi" id="tenant-multi" />
-                              <FormLabel htmlFor="tenant-multi">Multi-tenant SaaS</FormLabel>
-                            </div>
-                            <div className="flex items-center gap-3 rounded-2xl border border-border bg-white p-3">
-                              <RadioGroupItem value="single" id="tenant-single" />
-                              <FormLabel htmlFor="tenant-single">Single-tenant or dedicated environment</FormLabel>
-                            </div>
+                          <div className="mb-2 space-y-1">
+                            <FormLabel>Deployment model</FormLabel>
+                            <p className="text-sm text-muted-foreground">
+                              This determines how auditors evaluate data isolation and logical access controls.
+                            </p>
+                          </div>
+                          <RadioGroup value={field.value ? 'multi' : 'single'} onValueChange={(v) => field.onChange(v === 'multi')} className="grid gap-3 md:grid-cols-2">
+                            <label htmlFor="tenant-multi" className={cn(
+                              'flex cursor-pointer items-start gap-4 rounded-2xl border bg-white p-4 transition-colors hover:border-primary/40',
+                              field.value ? 'border-primary/60 bg-primary/5' : 'border-border',
+                            )}>
+                              <RadioGroupItem value="multi" id="tenant-multi" className="mt-0.5 shrink-0" />
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                  <Users className="h-4 w-4 text-primary" />
+                                  <p className="text-sm font-semibold text-foreground">Multi-tenant SaaS</p>
+                                </div>
+                                <p className="text-xs text-muted-foreground">Multiple customers share the same infrastructure. Data is isolated logically (row-level, org-scoped) rather than physically.</p>
+                                <p className="text-xs text-muted-foreground/70">Choose this if customers log into the same application and their data lives in shared databases or cloud accounts.</p>
+                              </div>
+                            </label>
+                            <label htmlFor="tenant-single" className={cn(
+                              'flex cursor-pointer items-start gap-4 rounded-2xl border bg-white p-4 transition-colors hover:border-primary/40',
+                              !field.value ? 'border-primary/60 bg-primary/5' : 'border-border',
+                            )}>
+                              <RadioGroupItem value="single" id="tenant-single" className="mt-0.5 shrink-0" />
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                  <Building2 className="h-4 w-4 text-muted-foreground" />
+                                  <p className="text-sm font-semibold text-foreground">Single-tenant / dedicated</p>
+                                </div>
+                                <p className="text-xs text-muted-foreground">Each customer gets their own dedicated environment — separate database, cloud account, or compute cluster.</p>
+                                <p className="text-xs text-muted-foreground/70">Choose this if you deploy separate infrastructure per customer or operate an on-premises product.</p>
+                              </div>
+                            </label>
                           </RadioGroup>
+                          <div className="rounded-xl border border-border bg-secondary/40 p-3 text-xs text-muted-foreground space-y-0.5">
+                            <p className="font-medium text-foreground">Not sure?</p>
+                            <p>If your customers share a database and you filter their data by an org/tenant ID column, you&apos;re multi-tenant. If each customer has their own deployment stack, you&apos;re single-tenant.</p>
+                          </div>
                         </FormItem>
                       )}
                     />
+
                     <AuditorLensCallout
                       criterion="CC2.1"
                       message="The system description you provide here becomes the foundation of your SOC 2 report. Auditors will compare every control to this scope. Be specific about what the system does, not how the company operates."
