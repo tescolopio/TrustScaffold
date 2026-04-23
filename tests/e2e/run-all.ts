@@ -7,7 +7,7 @@
  *   npx tsx tests/e2e/run-all.ts
  *
  * Prerequisites:
- *   1. Supabase running locally (npx supabase start)
+ *   1. Cold-fork preflight complete (bash scripts/setup.sh --yes)
  *   2. Staging seed applied (psql ... -f tests/seed-staging.sql)
  *   3. Next.js dev server running (npm run dev)
  *   4. Environment variables set (.env.local or exported)

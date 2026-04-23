@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # setup.sh — Cold-fork bootstrap for TrustScaffold local development.
-# Runs everything in test plan sections 0.1-0.5 unattended.
-# Usage: bash scripts/setup.sh
+# Runs setup verification with interactive defaults, or unattended with --yes.
+# Usage: bash scripts/setup.sh [--yes] [--skip-build]
 
 set -euo pipefail
 
@@ -12,9 +12,71 @@ warn() { echo -e "${YELLOW}⚠${NC}  $*"; }
 fail() { echo -e "${RED}✗${NC} $*"; exit 1; }
 step() { echo -e "\n${CYAN}▶ $*${NC}"; }
 
+NON_INTERACTIVE=0
+DEFAULT_DB_CHOICE="s"
+DEFAULT_ENV_CHOICE="y"
+DEFAULT_SEED_CHOICE="n"
+DEFAULT_BUILD_CHOICE="n"
+
+usage() {
+  cat <<'EOF'
+Usage: bash scripts/setup.sh [--yes] [--skip-build] [--help]
+
+  --yes         Run non-interactively with local-safe defaults
+                (db push, overwrite .env.local, reset bad template seed, run build)
+  --skip-build  Skip the optional production build prompt/check
+  --help        Show this help text
+EOF
+}
+
+prompt_choice() {
+  local prompt=$1
+  local default=$2
+  local result_var=$3
+  local value
+
+  if [[ "$NON_INTERACTIVE" -eq 1 ]]; then
+    warn "Non-interactive mode: ${prompt} ${default}"
+    printf -v "$result_var" '%s' "$default"
+    return 0
+  fi
+
+  printf "%s" "$prompt"
+  read -r value </dev/tty
+  value=${value:-$default}
+  printf -v "$result_var" '%s' "$value"
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --yes)
+      NON_INTERACTIVE=1
+      DEFAULT_DB_CHOICE="p"
+      DEFAULT_ENV_CHOICE="y"
+      DEFAULT_SEED_CHOICE="y"
+      DEFAULT_BUILD_CHOICE="y"
+      ;;
+    --skip-build)
+      DEFAULT_BUILD_CHOICE="n"
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    *)
+      fail "Unknown argument: $1"
+      ;;
+  esac
+  shift
+done
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
+
+if [[ ! -r /dev/tty ]]; then
+  NON_INTERACTIVE=1
+fi
 
 # ── Port utilities ─────────────────────────────────────────────────────────────
 # Returns 0 (true) if the port is NOT bound on any interface.
@@ -40,24 +102,39 @@ find_free_port() {
 
 # ── 1. Node version ───────────────────────────────────────────────────────────
 step "Checking Node.js"
-NODE_MAJOR=$(node -e "process.stdout.write(process.versions.node.split('.')[0])" 2>/dev/null) || fail "Node.js not found. Install Node 20+."
-[[ "$NODE_MAJOR" -ge 20 ]] || fail "Node $NODE_MAJOR detected — Node 20+ required."
+NODE_MAJOR=$(node -e "process.stdout.write(process.versions.node.split('.')[0])" 2>/dev/null) || fail "Node.js not found. Install Node 22+."
+[[ "$NODE_MAJOR" -ge 22 ]] || fail "Node $NODE_MAJOR detected — Node 22+ required."
 ok "Node $(node --version)"
 
-# ── 2. npm install ────────────────────────────────────────────────────────────
-step "Installing dependencies"
-npm install --prefer-offline --no-audit --no-fund 2>&1 | tail -3
-ok "npm install complete"
-
-# ── 3. Supabase CLI ───────────────────────────────────────────────────────────
-step "Checking Supabase CLI"
-if ! command -v supabase &>/dev/null && ! npx supabase --version &>/dev/null 2>&1; then
-  fail "Supabase CLI not available. Run: npm install -g supabase"
+# ── 2. Local prerequisites ────────────────────────────────────────────────────
+step "Checking local prerequisites"
+command -v docker &>/dev/null || fail "Docker not found. Install Docker 20+ and retry."
+docker info >/dev/null 2>&1 || fail "Docker daemon not reachable. Start Docker and retry."
+command -v curl &>/dev/null || fail "curl not found. Install curl and retry."
+if ! command -v psql &>/dev/null; then
+  warn "psql not found. Template-count verification will be skipped."
 fi
-SUPA_CMD="npx supabase"
-ok "Supabase CLI ready"
+ok "Docker and CLI prerequisites ready"
 
-# ── 4. Check Supabase ports before starting ───────────────────────────────────
+# ── 3. Install dependencies ───────────────────────────────────────────────────
+step "Installing dependencies"
+if [[ -f package-lock.json ]]; then
+  npm ci --prefer-offline --no-audit --no-fund 2>&1 | tail -3
+  ok "npm ci complete"
+else
+  npm install --prefer-offline --no-audit --no-fund 2>&1 | tail -3
+  ok "npm install complete"
+fi
+
+# ── 4. Supabase CLI ───────────────────────────────────────────────────────────
+step "Checking Supabase CLI"
+SUPA_CMD=(npx --yes supabase@latest)
+if ! "${SUPA_CMD[@]}" --version &>/dev/null 2>&1; then
+  fail "Supabase CLI not available through npx. Check network access and retry."
+fi
+ok "Supabase CLI ready via ${SUPA_CMD[*]}"
+
+# ── 5. Check Supabase ports before starting ───────────────────────────────────
 step "Checking Supabase port availability"
 SUPA_PORTS=(54321 54322 54327)
 SUPA_LABELS=("API" "DB" "Analytics")
@@ -73,21 +150,41 @@ done
 if [[ "$SUPA_CONFLICT" -eq 0 ]]; then
   ok "Supabase ports 54321/54322/54327 are free"
 else
-  warn "Supabase start will attempt to reuse the running instance. If it fails, run: npx supabase stop && bash scripts/setup.sh"
+  warn "Supabase start will attempt to reuse the running instance. If it fails, run: npx supabase@latest stop && bash scripts/setup.sh"
 fi
 
-# ── 5. Start Supabase ─────────────────────────────────────────────────────────
+# ── 6. Start Supabase or apply pending migrations ─────────────────────────────
 step "Starting Supabase local stack"
-$SUPA_CMD start 2>&1 | grep -E '(Starting|Applying|Seeding|Started|Error|failed)' || true
-ok "Supabase stack started"
+if ! is_port_free 54321; then
+  warn "Supabase is already running."
+  echo -e "  ${CYAN}r${NC}) Reset — wipe all data and reseed from scratch"
+  echo -e "  ${CYAN}p${NC}) Push — apply pending migrations only (preserves data)"
+  echo -e "  ${CYAN}s${NC}) Skip — leave the database as-is"
+  prompt_choice "  Choice [r/p/S]: " "$DEFAULT_DB_CHOICE" DB_CHOICE
+  case "${DB_CHOICE,,}" in
+    r)
+      step "Resetting database"
+      "${SUPA_CMD[@]}" db reset --local 2>&1 | grep -E '(Applying|Seeding|Resetting|error|Error)' || true
+      ok "Database reset complete" ;;
+    p)
+      step "Applying pending migrations"
+      "${SUPA_CMD[@]}" db push --local 2>&1 | grep -E '(Applying|Applied|No migrations|error|Error)' || true
+      ok "Migrations applied" ;;
+    *)
+      ok "Database left unchanged" ;;
+  esac
+else
+  "${SUPA_CMD[@]}" start 2>&1 | grep -E '(Starting|Applying|Seeding|Started|Error|failed)' || true
+fi
+ok "Supabase stack ready"
 
-# ── 6. Parse supabase status → env vars ──────────────────────────────────────
+# ── 7. Parse supabase status → env vars ──────────────────────────────────────
 step "Reading Supabase connection details"
 
 PROJECT_URL=""; ANON_KEY=""; SERVICE_KEY=""
 
 # Strategy 1: --output env (Supabase CLI v2 native, most reliable)
-if ENV_OUT=$($SUPA_CMD status --output env 2>/dev/null) && [[ -n "$ENV_OUT" ]]; then
+if ENV_OUT=$("${SUPA_CMD[@]}" status --output env 2>/dev/null) && [[ -n "$ENV_OUT" ]]; then
   PROJECT_URL=$(echo "$ENV_OUT" | grep -i 'API_URL\|SUPABASE_URL\|PROJECT_URL'  | head -1 | cut -d= -f2- | tr -d '[:space:]"')
   ANON_KEY=$(echo    "$ENV_OUT" | grep -i 'ANON_KEY'                            | head -1 | cut -d= -f2- | tr -d '[:space:]"')
   SERVICE_KEY=$(echo "$ENV_OUT" | grep -i 'SERVICE_ROLE_KEY\|SERVICE_KEY'       | head -1 | cut -d= -f2- | tr -d '[:space:]"')
@@ -95,7 +192,7 @@ fi
 
 # Strategy 2: grep patterns against the human-readable table (strips box chars)
 if [[ -z "$PROJECT_URL" || -z "$ANON_KEY" || -z "$SERVICE_KEY" ]]; then
-  STATUS=$($SUPA_CMD status 2>/dev/null)
+  STATUS=$("${SUPA_CMD[@]}" status 2>/dev/null)
   [[ -z "$PROJECT_URL" ]] && PROJECT_URL=$(echo "$STATUS" | grep -i "Project URL\|api_url" | grep -oE 'https?://[^[:space:]]+' | head -1)
   [[ -z "$ANON_KEY" ]]    && ANON_KEY=$(echo    "$STATUS" | grep -i "Publishable\|anon_key" | grep -oE 'sb_publishable_[A-Za-z0-9_-]+|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+' | head -1)
   [[ -z "$SERVICE_KEY" ]] && SERVICE_KEY=$(echo "$STATUS" | grep -i "Secret\|service_role"  | grep -oE 'sb_secret_[A-Za-z0-9_-]+|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+'      | head -1)
@@ -103,12 +200,12 @@ fi
 
 # Strategy 3: well-known local dev defaults (always correct for stock config)
 [[ -z "$PROJECT_URL" ]] && { warn "Falling back to default local Supabase URL"; PROJECT_URL="http://127.0.0.1:54321"; }
-[[ -z "$ANON_KEY" ]]    && fail "Could not determine anon key. Run: npx supabase status"
-[[ -z "$SERVICE_KEY" ]] && fail "Could not determine service role key. Run: npx supabase status"
+[[ -z "$ANON_KEY" ]]    && fail "Could not determine anon key. Run: npx supabase@latest status"
+[[ -z "$SERVICE_KEY" ]] && fail "Could not determine service role key. Run: npx supabase@latest status"
 
 ok "Supabase connection details parsed"
 
-# ── 7. Detect free Next.js port ───────────────────────────────────────────────
+# ── 8. Detect free Next.js port ───────────────────────────────────────────────
 step "Detecting available port for Next.js dev server"
 NEXTJS_PORT=$(find_free_port 3000 10)
 if [[ "$NEXTJS_PORT" -ne 3000 ]]; then
@@ -118,7 +215,7 @@ else
 fi
 ok "Next.js will bind to port ${NEXTJS_PORT}"
 
-# ── 8. Write .env.local ───────────────────────────────────────────────────────
+# ── 9. Write .env.local ───────────────────────────────────────────────────────
 step "Generating .env.local"
 
 # Compare against any existing .env.local and warn on drift
@@ -137,10 +234,15 @@ if [[ -f .env.local ]]; then
   if [[ "$DRIFT" -eq 0 ]]; then
     ok ".env.local already correct — no changes needed"
   else
-    warn "Overwriting .env.local with current values"
-    printf 'NEXT_PUBLIC_SUPABASE_URL=%s\nNEXT_PUBLIC_SUPABASE_ANON_KEY=%s\nSUPABASE_SERVICE_ROLE_KEY=%s\nPORT=%s\n' \
-      "$PROJECT_URL" "$ANON_KEY" "$SERVICE_KEY" "$NEXTJS_PORT" > .env.local
-    ok ".env.local updated"
+    prompt_choice "  Overwrite .env.local with current values? [Y/n]: " "$DEFAULT_ENV_CHOICE" ENV_CHOICE
+    case "${ENV_CHOICE,,}" in
+      n|no)
+        warn ".env.local left unchanged — app may behave unexpectedly" ;;
+      *)
+        printf 'NEXT_PUBLIC_SUPABASE_URL=%s\nNEXT_PUBLIC_SUPABASE_ANON_KEY=%s\nSUPABASE_SERVICE_ROLE_KEY=%s\nPORT=%s\n' \
+          "$PROJECT_URL" "$ANON_KEY" "$SERVICE_KEY" "$NEXTJS_PORT" > .env.local
+        ok ".env.local updated" ;;
+    esac
   fi
 else
   printf 'NEXT_PUBLIC_SUPABASE_URL=%s\nNEXT_PUBLIC_SUPABASE_ANON_KEY=%s\nSUPABASE_SERVICE_ROLE_KEY=%s\nPORT=%s\n' \
@@ -153,7 +255,7 @@ echo "  NEXT_PUBLIC_SUPABASE_ANON_KEY=${ANON_KEY:0:20}…"
 echo "  SUPABASE_SERVICE_ROLE_KEY=${SERVICE_KEY:0:12}…"
 echo "  PORT=$NEXTJS_PORT"
 
-# ── 9. Create evidence storage bucket ─────────────────────────────────────────
+# ── 10. Create evidence storage bucket ────────────────────────────────────────
 step "Creating evidence storage bucket"
 BUCKET_RESPONSE=$(curl -s -X POST "${PROJECT_URL}/storage/v1/bucket" \
   -H "Authorization: Bearer ${SERVICE_KEY}" \
@@ -165,15 +267,15 @@ if echo "$BUCKET_RESPONSE" | grep -q '"name"'; then
 elif echo "$BUCKET_RESPONSE" | grep -qi "already exists"; then
   ok "Storage bucket 'evidence' already exists"
 elif echo "$BUCKET_RESPONSE" | grep -qi "name resolution failed\|storage.*disabled\|not found"; then
-  warn "Storage service not running — [storage] enabled = false in config.toml."
-  warn "Run: npx supabase stop && npx supabase start, then re-run this script."
+  warn "Storage bucket request failed. Storage is enabled in supabase/config.toml, so the local stack is stale or storage failed to boot."
+  warn "Run: npx supabase@latest stop && npx supabase@latest start, then re-run this script."
   warn "Evidence ingestion (test plan §6) will be unavailable until fixed."
 else
   warn "Storage bucket creation returned: $BUCKET_RESPONSE"
   warn "Evidence ingestion (test plan §6) may be unavailable."
 fi
 
-# ── 10. Verify template seed ──────────────────────────────────────────────────
+# ── 11. Verify template seed ──────────────────────────────────────────────────
 step "Verifying template seed"
 DB_URL="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
 TEMPLATE_COUNT=$(PGPASSWORD=postgres psql "$DB_URL" -t -c "SELECT COUNT(*) FROM public.templates;" 2>/dev/null | tr -d '[:space:]')
@@ -183,17 +285,30 @@ if [[ -z "$TEMPLATE_COUNT" ]]; then
 elif [[ "$TEMPLATE_COUNT" -ge 16 ]]; then
   ok "Template seed verified: $TEMPLATE_COUNT templates"
 else
-  fail "Expected ≥16 templates, found $TEMPLATE_COUNT. Run: npx supabase db reset"
+  warn "Expected ≥16 templates, found $TEMPLATE_COUNT — seed may be incomplete."
+  prompt_choice "  Run db reset now to fix it? [Y/n]: " "$DEFAULT_SEED_CHOICE" SEED_CHOICE
+  case "${SEED_CHOICE,,}" in
+    n|no)
+      warn "Skipping reset — template-dependent features will not work correctly" ;;
+    *)
+      "${SUPA_CMD[@]}" db reset --local 2>&1 | grep -E '(Applying|Seeding|Resetting|error|Error)' || true
+      ok "Database reset complete" ;;
+  esac
 fi
 
-# ── 11. Production build ──────────────────────────────────────────────────────
-step "Running production build"
-npm run build 2>&1 | grep -E '(Compiled|error|Error|warn|✓|✗|Route)' | grep -v '^$' || true
+# ── 12. Production build ──────────────────────────────────────────────────────
+step "Production build"
+prompt_choice "  Run production build now? (slow ~30–60s, safe to skip for dev) [Y/n]: " "$DEFAULT_BUILD_CHOICE" BUILD_CHOICE
+case "${BUILD_CHOICE,,}" in
+  n|no)
+    warn "Skipping production build — run 'npm run build' before deploying" ;;
+  *)
+    npm run build 2>&1 | grep -E '(Compiled|error|Error|warn|✓|✗|Route)' | grep -v '^$' || true
+    [[ -d ".next" ]] || fail "Build failed — .next/ directory not created."
+    ok "Build passed" ;;
+esac
 
-[[ -d ".next" ]] || fail "Build failed — .next/ directory not created."
-ok "Build passed"
-
-# ── 12. Optional integrations guidance ───────────────────────────────────────
+# ── 13. Optional integrations guidance ───────────────────────────────────────
 step "Optional integrations (configure after first login)"
 cat <<'GUIDE'
   Evidence storage    — always local (Supabase DB + Storage bucket). No setup needed.

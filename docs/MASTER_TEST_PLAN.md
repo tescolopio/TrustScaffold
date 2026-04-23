@@ -2,7 +2,7 @@
 
 > **Audience:** Internal Developers, QA, and Red Team Leads
 > **Status:** Pre-Launch
-> **Last Updated:** 2026-04-22
+> **Last Updated:** 2026-04-23
 
 ---
 
@@ -33,12 +33,12 @@ If any step fails, the project is not ready for public release.
 ```bash
 git clone https://github.com/tescolopio/trustscaffold.git
 cd trustscaffold
-npm install
+npm ci
 ```
 
 **Expected:**
 - Clone completes without errors.
-- `npm install` exits 0 with no peer dependency errors.
+- `npm ci` exits 0 with no peer dependency errors.
 - `node_modules/` is populated. `package-lock.json` is unchanged.
 
 ### 0.2 Start Local Supabase
@@ -57,26 +57,29 @@ npx supabase@latest start
   PGPASSWORD=postgres psql 'postgresql://postgres@127.0.0.1:54322/postgres' \
     -c "select count(*) from public.templates;"
   ```
-  Expected result: `18`.
+      Expected result: `16`.
 
 ### 0.3 Configure Environment
 
 **Steps:**
 ```bash
-bash scripts/setup.sh
+bash scripts/setup.sh --yes
 ```
 
-The setup script detects Supabase service URLs and keys automatically, scans ports 3000–3009 for the first free port, and writes `.env.local` with all required variables. If port 3000 is occupied (e.g., by Grafana or another service) it assigns the next available port and prints the correct URL.
+`setup.sh` is the canonical unattended cold-fork bootstrap command. It verifies Node 22+, Docker, curl, installs dependencies deterministically, starts or reconciles the local Supabase stack, uses local-only mutation commands, scans ports 3000–3009 for the first free Next.js port, writes `.env.local`, creates the `evidence` bucket, verifies the template seed, and runs the production build when `--yes` is supplied.
 
 **Expected:**
 - `.env.local` exists in project root with `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, and `PORT` populated.
+- The `evidence` storage bucket exists locally.
+- Template seed verification reports `16` templates.
 - Script outputs the assigned dev URL, e.g. `http://localhost:3001/signup`.
+- `--yes` completes without any interactive prompt.
 
 ### 0.4 Build Verification
 
 **Steps:**
 ```bash
-npm run build
+bash scripts/setup.sh --yes
 ```
 
 **Expected:**
@@ -85,6 +88,10 @@ npm run build
 - Zero ESLint errors.
 - `.next/` directory created with `standalone/` output.
 
+Notes:
+- This build check is intentionally integrated into section 0.3 when `--yes` is used.
+- If running the script interactively, the operator may skip the build and execute `npm run build` here instead.
+
 ### 0.5 Dev Server Smoke Test
 
 **Steps:**
@@ -92,7 +99,7 @@ npm run build
 # Read PORT from .env.local (default 3000 if unset)
 PORT=$(grep '^PORT=' .env.local 2>/dev/null | cut -d= -f2); PORT=${PORT:-3000}
 npm run dev &
-sleep 5
+sleep 10
 curl -s -o /dev/null -w '%{http_code}' "http://localhost:${PORT}/"
 curl -s -o /dev/null -w '%{http_code}' "http://localhost:${PORT}/login"
 curl -s -o /dev/null -w '%{http_code}' "http://localhost:${PORT}/signup"
@@ -155,10 +162,182 @@ Expected: One row with `admin` role under `Cold Start Corp`.
 - Click **Regenerate**.
 - Verify doc content refreshes (status resets to `draft`) and a new `document_revisions` row appears with `source = 'generated'`.
 
+### 0.7A Wizard User Journey — Manual QA Worksheet
+
+Use this when you want to compare current behavior vs expected behavior from the live UI. Record each result as `pass`, `partial`, or `fail`, plus the actual behavior you saw.
+
+**Preflight:**
+```bash
+bash scripts/setup.sh --yes
+PORT=$(grep '^PORT=' .env.local 2>/dev/null | cut -d= -f2); PORT=${PORT:-3000}
+npm run dev
+```
+
+Open `http://localhost:${PORT}/wizard` after signing in as a fresh admin user.
+
+**Checklist:**
+
+1. **Wizard shell & step map**
+       Expected:
+       - Left rail shows 10 steps in this order: Welcome, Governance, System Scope, TSC Selection, Infrastructure, Security Assessment, Security Tooling, Operations, Review, Generate.
+       - Active organization name and org ID are visible.
+       - A draft sync status is visible in the sidebar.
+       Report back with:
+       - Which step titles you actually see.
+       - Whether the active org card renders.
+       - Whether draft status shows `saved`, `saving`, `error`, or stays idle.
+
+2. **Required-field gating on Welcome**
+       Action:
+       - Leave the required fields blank and click Next.
+       Expected:
+       - The wizard does not advance.
+       - A toast says the required fields must be completed before continuing.
+       - Inline validation appears for company name, website URL, primary contact, contact email, and industry.
+       Report back with:
+       - Whether the step blocked navigation.
+       - Which fields showed inline errors.
+       - Exact toast text if it differs.
+
+3. **First-time compliance guidance path**
+       Action:
+       - On Welcome, set org age to `< 1 year` and compliance maturity to `First time — we're just getting started`.
+       - Continue to Governance.
+       Expected:
+       - Governance shows a blue first-time guidance callout.
+       - Training and acknowledgement questions allow a `not yet` path without immediate validation failure.
+       Report back with:
+       - Whether the blue callout appears.
+       - Any wording drift in the guidance.
+       - Whether the cadence controls allow a first-time/not-yet answer.
+
+4. **System Scope validation & help text**
+       Action:
+       - Enter a short system description under 20 characters and try to continue.
+       - Then correct it, select at least one data type, and choose multi-tenant or single-tenant.
+       Expected:
+       - Step blocks until system name, a 20+ character description, and at least one data type are provided.
+       - The deployment model helper explains the difference between multi-tenant and single-tenant.
+       Report back with:
+       - Whether the 20-character rule is enforced.
+       - Which helper text rendered.
+       - Whether the step advanced after fixing inputs.
+
+5. **Draft persistence across reload**
+       Action:
+       - Advance to TSC Selection or later.
+       - Refresh the page or close and reopen `/wizard`.
+       Expected:
+       - The wizard returns to the saved step.
+       - Previously entered data is restored.
+       - Sidebar status eventually shows the draft was saved to the server.
+       Report back with:
+       - Which step reopened.
+       - Any fields that were lost.
+       - Whether persistence felt local-only or server-backed.
+
+6. **Review step catches whole-wizard issues**
+       Action:
+       - Leave at least one required field invalid somewhere earlier in the wizard, navigate to Review, then try to continue.
+       Expected:
+       - The wizard blocks progression to generation.
+       - A toast explains validation issues must be resolved before drafts can be generated.
+       Report back with:
+       - Whether Review surfaced the missing field.
+       - Whether the toast appeared.
+       - Whether the step navigation helped you get back to the broken field.
+
+7. **Generate preflight & document list**
+       Action:
+       - Reach Generate with valid data.
+       Expected:
+       - Generate shows a document count and the list of expected documents.
+       - If company name, system name, or system description are missing, Generate is disabled and shows links back to the broken steps.
+       - While generating, the button text changes and the per-document progress list animates.
+       Report back with:
+       - The document count shown.
+       - Whether the button disabled correctly for missing required fields.
+       - Whether progress feedback looked accurate or confusing.
+
+8. **Post-generation redirect & document quality**
+       Action:
+       - Generate drafts and let the wizard redirect.
+       Expected:
+       - Success toast mentions the number of draft policies generated.
+       - User is redirected to `/generated-docs`.
+       - Drafts include at minimum Information Security Policy, Access Control Policy, SDLC Policy, and System Description.
+       - Rendered content contains no unresolved `{{` Handlebars tokens.
+       Report back with:
+       - The route you landed on.
+       - The names of the drafts you saw.
+       - Any unresolved template tokens or broken formatting.
+
+9. **Role-based regenerate control**
+       Action:
+       - Open a generated document detail page as an admin user.
+       Expected:
+       - A Regenerate action is visible for admin/editor roles.
+       - Regenerating refreshes the document and preserves tenant scoping.
+       Report back with:
+       - Whether Regenerate is visible.
+       - Whether the document updated.
+       - Any permission or navigation issues.
+
+**Suggested report format:**
+
+```md
+## Wizard QA Report
+
+- Build/setup used: `bash scripts/setup.sh --yes`
+- App URL tested: `http://localhost:<PORT>`
+- User/org tested:
+
+### Results
+- 1. Wizard shell & step map: pass | partial | fail
+      Expected:
+      Actual:
+      Notes:
+- 2. Required-field gating on Welcome: pass | partial | fail
+      Expected:
+      Actual:
+      Notes:
+- 3. First-time compliance guidance path: pass | partial | fail
+      Expected:
+      Actual:
+      Notes:
+- 4. System Scope validation & help text: pass | partial | fail
+      Expected:
+      Actual:
+      Notes:
+- 5. Draft persistence across reload: pass | partial | fail
+      Expected:
+      Actual:
+      Notes:
+- 6. Review step catches whole-wizard issues: pass | partial | fail
+      Expected:
+      Actual:
+      Notes:
+- 7. Generate preflight & document list: pass | partial | fail
+      Expected:
+      Actual:
+      Notes:
+- 8. Post-generation redirect & document quality: pass | partial | fail
+      Expected:
+      Actual:
+      Notes:
+- 9. Role-based regenerate control: pass | partial | fail
+      Expected:
+      Actual:
+      Notes:
+```
+
 ### 0.8 E2E Suite — Full Pass
 
 **Steps:**
 ```bash
+# Canonical cold-fork preflight before the E2E suite
+bash scripts/setup.sh --yes
+
 # Apply staging seed
 PGPASSWORD=postgres psql 'postgresql://postgres@127.0.0.1:54322/postgres' \
   -f tests/seed-staging.sql
@@ -174,6 +353,9 @@ npx tsx tests/e2e/run-all.ts
 
 **Steps:**
 ```bash
+# Canonical cold-fork preflight before the red team suite
+bash scripts/setup.sh --yes
+
 set -a && source .env.local && set +a
 npx tsx tests/e2e/red-team.ts
 ```
@@ -236,7 +418,7 @@ Seed data for the staging environment lives in `tests/seed-staging.sql`.
 
 | Component | Requirement |
 |---|---|
-| Supabase | Local (`npx supabase start`) or hosted staging project |
+| Supabase | Local (`npx supabase@latest start`) or hosted staging project |
 | Postgres Extensions | `uuid-ossp`, `pgcrypto` (enabled by migrations) |
 | Next.js | `npm run dev` or production build pointing at staging Supabase |
 | GitHub | A dedicated test repository for webhook/export tests |
@@ -257,13 +439,14 @@ The staging seed creates **3 organizations** with **4 role-specific users each**
 ### 2.3 Running the Tests
 
 ```bash
-# 1. Start Supabase locally
-npx supabase start
+# 1. Run the canonical cold-fork preflight
+bash scripts/setup.sh --yes
 
 # 2. Apply staging seed (on top of normal seed)
 psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -f tests/seed-staging.sql
 
-# 3. Run the full E2E suite
+# 3. Load env and run the full E2E suite
+set -a && source .env.local && set +a
 npx tsx tests/e2e/run-all.ts
 
 # 4. Run individual suites
@@ -378,7 +561,7 @@ and Processing Integrity-specific templates are excluded.
 
 **Scenario:** Run wizard with all 5 TSC categories enabled.
 
-**Expected:** All 18 templates are compiled (including evidence-checklist
+**Expected:** All 16 templates are compiled (including evidence-checklist
 and system-description).
 
 ### 4.5 Hybrid / Physical Logic
@@ -795,7 +978,7 @@ After the red team engagement:
 - [ ] **Patch & re-test.** Fix all Critical/High findings. Re-run the
       E2E suite against the patched staging environment.
 - [ ] **Clean slate.** Tear down the staging database entirely. Run
-      `npx supabase db reset` to eliminate all red-team artifacts, mock
+      `npx supabase@latest db reset --local` to eliminate all red-team artifacts, mock
       data, and test tokens before production deployment.
 - [ ] **Rotate all secrets.** Even if staging keys differ from production,
       rotate: Supabase service role key, webhook secrets, integration tokens,
@@ -815,6 +998,7 @@ Maps each test case to the V1.0 DoD section it validates:
 | 0.5 Smoke Test | §0 Cold Fork | — (HTTP) |
 | 0.6 Signup Flow | §0 Cold Fork | organizations, organization_members |
 | 0.7 Wizard Flow | §0 Cold Fork | generated_docs, document_revisions |
+| 0.7A Wizard User Journey | §0 Cold Fork + §2 Wizard UX | wizard_drafts, generated_docs, document_revisions |
 | 0.8 E2E Full Pass | §0 Cold Fork | All tables |
 | 0.9 Red Team Pass | §0 Cold Fork | All tables |
 | 0.10 Docker Build | §0 Cold Fork | — (container) |

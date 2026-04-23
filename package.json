@@ -4,6 +4,7 @@
     "private": true,
     "scripts": {
         "dev": "next dev",
+        "dev:reset": "npm ci --prefer-offline --no-audit --no-fund && npx --yes supabase@latest db reset --local && npm run dev",
         "build": "next build",
         "start": "next start",
         "lint": "eslint .",

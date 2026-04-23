@@ -33,7 +33,7 @@ function loadTemplatesFromDB(): { slug: string; name: string; markdown_template:
         return { slug, name, markdown_template: rest.join('|||') };
       });
   } catch {
-    console.error('⚠  Could not connect to local Supabase DB. Ensure `npx supabase start` is running.');
+    console.error('⚠  Could not connect to local Supabase DB. Ensure `bash scripts/setup.sh --yes` has completed or `npx supabase@latest start` is running.');
     process.exit(1);
   }
 }

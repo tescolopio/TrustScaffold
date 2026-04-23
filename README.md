@@ -31,28 +31,22 @@ Choose your compliance framework and criteria, describe your infrastructure (pub
 ## Quick Start — Local Development (5 minutes)
 
 ```bash
-# 1. Clone and install
+# 1. Clone
 git clone https://github.com/tescolopio/trustscaffold.git
 cd trustscaffold
-npm install
 
-# 2. Start local Supabase (Postgres + Auth + PostgREST)
-npx supabase@latest init --force
-npx supabase@latest start
+# 2. Bootstrap local development
+bash scripts/setup.sh
+# or unattended cold-fork verification:
+# bash scripts/setup.sh --yes
 
-# 3. Create .env.local from Supabase output
-#    Copy the keys from the output of `npx supabase@latest status`
-cat > .env.local << 'EOF'
-NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
-NEXT_PUBLIC_SUPABASE_ANON_KEY=<PUBLISHABLE_KEY from supabase status>
-SUPABASE_SERVICE_ROLE_KEY=<SERVICE_ROLE_KEY from supabase status>
-EOF
-
-# 4. Start the dev server
+# 3. Start the dev server
 npm run dev
 ```
 
-Open `http://localhost:3000/signup` → create an account → land on `/dashboard`.
+The setup script checks Node 22+, Docker, curl, installs dependencies with `npm ci` when the lockfile is present, starts or reuses the local Supabase stack, writes `.env.local`, ensures the `evidence` bucket exists, verifies the template seed, and can run the production build for unattended validation.
+
+Open the signup URL printed by the script, then create an account and land on `/dashboard`.
 
 > **Full local development guide:** [`docs/LOCAL_DEV.md`](docs/LOCAL_DEV.md)
 > **Run the E2E test suite:** [`docs/MASTER_TEST_PLAN.md`](docs/MASTER_TEST_PLAN.md)
