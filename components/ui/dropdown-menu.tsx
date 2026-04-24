@@ -14,7 +14,7 @@ const StyledDropdownMenuContent = ({ className, sideOffset = 8, ...props }: Reac
   <DropdownMenuPrimitive.Portal>
     <DropdownMenuContent
       sideOffset={sideOffset}
-      className={cn('z-50 min-w-[12rem] max-w-[calc(100vw-1rem)] overflow-hidden rounded-xl border border-border bg-white p-1 text-foreground shadow-panel dark:bg-card', className)}
+      className={cn('z-50 min-w-[12rem] max-w-[calc(100vw-1rem)] overflow-hidden rounded-xl border border-border bg-white p-1 text-slate-900 shadow-panel', className)}
       {...props}
     />
   </DropdownMenuPrimitive.Portal>

@@ -59,6 +59,22 @@ body {
     background-image: radial-gradient(circle at top left, rgba(56, 189, 248, 0.16), transparent 22%), radial-gradient(circle at bottom right, rgba(245, 158, 11, 0.14), transparent 20%), linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(9, 14, 26, 0.98));
 }
 
+.dark input,
+.dark textarea,
+.dark select {
+    color: rgb(15 23 42);
+}
+
+.dark input::placeholder,
+.dark textarea::placeholder {
+    color: rgb(100 116 139);
+}
+
+.dark select,
+.dark option {
+    background-color: rgb(255 255 255);
+}
+
 main {
     @apply min-h-screen;
 }
