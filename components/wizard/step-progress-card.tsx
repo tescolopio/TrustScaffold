@@ -15,17 +15,17 @@ interface StepProgressCardProps {
 const statusConfig = {
   complete: {
     icon: <Check className="h-3.5 w-3.5" />,
-    className: 'text-emerald-600 bg-emerald-50 border-emerald-200',
+    className: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200',
     label: 'Complete',
   },
   partial: {
     icon: <Circle className="h-3.5 w-3.5" />,
-    className: 'text-amber-500 bg-amber-50 border-amber-200',
+    className: 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200',
     label: 'In progress',
   },
   empty: {
     icon: <CircleDashed className="h-3.5 w-3.5" />,
-    className: 'text-slate-400 bg-slate-50 border-slate-200',
+    className: 'border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-500/30 dark:bg-slate-500/10 dark:text-slate-200',
     label: 'Not started',
   },
 } as const;
@@ -68,7 +68,7 @@ export function StepProgressCard({ completions, onNavigateToStep }: StepProgress
                     config.className
                   )}
                 >
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/70 text-[11px] font-semibold text-foreground">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-background/80 text-[11px] font-semibold text-foreground">
                     {step.step + 1}
                   </span>
                   <span className="flex-1 text-sm font-medium">{step.label}</span>
@@ -108,7 +108,7 @@ export function StepProgressCard({ completions, onNavigateToStep }: StepProgress
         )}
 
         {incomplete.length === 0 && (
-          <div className="flex items-center gap-2 rounded-2xl bg-emerald-50 px-3 py-2.5 text-xs font-medium text-emerald-700">
+          <div className="flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-xs font-medium text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200">
             <Check className="h-4 w-4" />
             All steps complete — ready to generate policies
           </div>

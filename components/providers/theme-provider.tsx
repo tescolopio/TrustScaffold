@@ -10,7 +10,7 @@ type ThemeContextValue = {
   toggleTheme: () => void;
 };
 
-const storageKey = 'trustscaffold-theme';
+export const THEME_STORAGE_KEY = 'trustscaffold-theme';
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
@@ -20,13 +20,17 @@ function applyTheme(theme: Theme) {
   root.style.colorScheme = theme;
 }
 
+function getStoredTheme(): Theme {
+  const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+
+  return storedTheme === 'dark' || storedTheme === 'light' ? storedTheme : 'light';
+}
+
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<Theme>('light');
 
   useEffect(() => {
-    const storedTheme = window.localStorage.getItem(storageKey);
-    const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-    const initialTheme = storedTheme === 'dark' || storedTheme === 'light' ? storedTheme : systemTheme;
+    const initialTheme = getStoredTheme();
 
     setThemeState(initialTheme);
     applyTheme(initialTheme);
@@ -36,13 +40,13 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     theme,
     setTheme: (nextTheme) => {
       setThemeState(nextTheme);
-      window.localStorage.setItem(storageKey, nextTheme);
+      window.localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
       applyTheme(nextTheme);
     },
     toggleTheme: () => {
       const nextTheme = theme === 'dark' ? 'light' : 'dark';
       setThemeState(nextTheme);
-      window.localStorage.setItem(storageKey, nextTheme);
+      window.localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
       applyTheme(nextTheme);
     },
   }), [theme]);

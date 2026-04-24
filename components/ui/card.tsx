@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 export function Card({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div
-      className={cn('rounded-[1.5rem] border border-white/60 bg-white/85 shadow-panel backdrop-blur', className)}
+      className={cn('rounded-[1.5rem] border border-border/80 bg-card/85 text-card-foreground shadow-panel backdrop-blur', className)}
       {...props}
     />
   );

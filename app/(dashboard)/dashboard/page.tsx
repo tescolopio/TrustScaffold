@@ -135,17 +135,17 @@ export default async function DashboardPage() {
           </CardHeader>
           <CardContent className="space-y-3 text-sm text-muted-foreground">
             {!hasDraft ? (
-              <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
-                <p className="font-semibold text-blue-900">No onboarding draft yet</p>
-                <p className="mt-1 text-blue-800">Start the policy wizard to establish the organization profile, infrastructure footprint, governance answers, and first document set.</p>
+              <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-500/30 dark:bg-blue-500/10">
+                <p className="font-semibold text-blue-900 dark:text-blue-100">No onboarding draft yet</p>
+                <p className="mt-1 text-blue-800 dark:text-blue-200">Start the policy wizard to establish the organization profile, infrastructure footprint, governance answers, and first document set.</p>
                 <Button asChild className="mt-3">
                   <Link href="/wizard">Start wizard</Link>
                 </Button>
               </div>
             ) : (
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-                <p className="font-semibold text-emerald-900">Wizard draft already exists</p>
-                <p className="mt-1 text-emerald-800">Resume the wizard to update answers or go straight to Generated Docs if you want to review existing drafts.</p>
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-500/30 dark:bg-emerald-500/10">
+                <p className="font-semibold text-emerald-900 dark:text-emerald-100">Wizard draft already exists</p>
+                <p className="mt-1 text-emerald-800 dark:text-emerald-200">Resume the wizard to update answers or go straight to Generated Docs if you want to review existing drafts.</p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Button asChild>
                     <Link href="/wizard">Resume wizard</Link>
