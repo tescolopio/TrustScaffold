@@ -29,6 +29,7 @@ export type OrganizationSummary = {
   name: string;
   slug: string;
   role: OrganizationRole;
+  wizardAutosaveIntervalMinutes: number;
 };
 
 export type DashboardContext = {

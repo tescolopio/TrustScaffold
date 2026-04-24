@@ -17,7 +17,7 @@ export const getDashboardContext = cache(async (): Promise<DashboardContext | nu
 
   const { data: memberships, error } = await supabase
     .from('organization_members')
-    .select('role, organizations!inner(id, name, slug)')
+    .select('role, organizations!inner(id, name, slug, metadata)')
     .eq('user_id', user.id)
     .order('created_at', { ascending: true });
 
@@ -30,12 +30,22 @@ export const getDashboardContext = cache(async (): Promise<DashboardContext | nu
     ? firstMembership.organizations[0]
     : firstMembership?.organizations;
 
+  const metadata = firstOrganization?.metadata && typeof firstOrganization.metadata === 'object'
+    ? firstOrganization.metadata as Record<string, unknown>
+    : {};
+  const wizardAutosaveIntervalMinutes = (() => {
+    const value = metadata.wizardAutosaveIntervalMinutes;
+
+    return typeof value === 'number' && Number.isFinite(value) ? value : 5;
+  })();
+
   const organization = firstMembership && firstOrganization
     ? {
         id: firstOrganization.id,
         name: firstOrganization.name,
         slug: firstOrganization.slug,
         role: firstMembership.role,
+        wizardAutosaveIntervalMinutes,
       }
     : null;
 

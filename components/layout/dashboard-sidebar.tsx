@@ -3,9 +3,11 @@
 import type { Route } from 'next';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { FileText, LayoutDashboard, Settings, ShieldCheck, Users } from 'lucide-react';
+import { Check, Circle, CircleDashed, FileText, LayoutDashboard, Settings, ShieldCheck, Users } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
+import { useWizardStore } from '@/lib/wizard/store';
+import { wizardStepTitles } from '@/lib/wizard/schema';
 
 export const dashboardNavigation = [
   { href: '/dashboard' as Route, label: 'Dashboard', icon: LayoutDashboard },
@@ -17,6 +19,19 @@ export const dashboardNavigation = [
 
 export function DashboardSidebar() {
   const pathname = usePathname();
+  const { currentStep, hasHydrated, setCurrentStep } = useWizardStore((state) => ({
+    currentStep: state.currentStep,
+    hasHydrated: state.hasHydrated,
+    setCurrentStep: state.setCurrentStep,
+  }));
+  const showWizardSteps = pathname === '/wizard';
+
+  function jumpToWizardStep(step: number) {
+    setCurrentStep(step);
+    requestAnimationFrame(() => {
+      document.getElementById('wizard-form-top')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
 
   return (
     <aside className="hidden w-72 shrink-0 border-r border-white/60 bg-white/70 px-5 py-6 backdrop-blur dark:border-border dark:bg-card/80 lg:block">
@@ -44,6 +59,44 @@ export function DashboardSidebar() {
           );
         })}
       </nav>
+      {showWizardSteps ? (
+        <div className="mt-8 space-y-3 border-t border-border/70 px-3 pt-6">
+          <div className="space-y-1">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary/70">Wizard Steps</p>
+            <p className="text-xs text-muted-foreground">Desktop step navigation now lives here so the form keeps the full content width.</p>
+          </div>
+          <ol className="space-y-1.5">
+            {wizardStepTitles.map((stepTitle, index) => {
+              const statusIcon = !hasHydrated
+                ? <CircleDashed className="h-3.5 w-3.5 text-slate-400" />
+                : index < currentStep
+                  ? <Check className="h-3.5 w-3.5 text-emerald-600" />
+                  : index === currentStep
+                    ? <Circle className="h-3.5 w-3.5 text-primary" />
+                    : <CircleDashed className="h-3.5 w-3.5 text-slate-400" />;
+
+              return (
+                <li key={stepTitle}>
+                  <button
+                    type="button"
+                    onClick={() => jumpToWizardStep(index)}
+                    className={cn(
+                      'flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-left transition-colors hover:bg-secondary/60',
+                      hasHydrated && index === currentStep ? 'bg-primary/10 text-foreground' : 'text-muted-foreground'
+                    )}
+                  >
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-secondary/70 text-[11px] font-semibold text-foreground">
+                      {index + 1}
+                    </span>
+                    <span className="flex-1 truncate text-xs font-medium">{stepTitle}</span>
+                    {statusIcon}
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+        </div>
+      ) : null}
     </aside>
   );
 }

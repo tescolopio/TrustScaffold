@@ -6,7 +6,7 @@ import { getDashboardContext } from '@/lib/auth/get-dashboard-context';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
 
 import { updateOrgProfileAction } from '@/app/actions/org-profile';
-import { deleteIntegrationAction, deleteIntegrationTokenAction, saveIntegrationAction } from './actions';
+import { deleteIntegrationAction, deleteIntegrationTokenAction, saveIntegrationAction, saveWizardAutosaveSettingsAction } from './actions';
 import {
   createAuditSnapshotAction,
   createAuditorPortalTokenAction,
@@ -51,6 +51,42 @@ export default async function SettingsPage({
 
       <Card>
         <CardHeader>
+          <CardTitle>Wizard Autosave</CardTitle>
+          <CardDescription>
+            Automatically sync in-progress wizard answers to the server on a fixed interval. Local browser persistence still happens continuously; this setting controls the periodic server backup cadence for the organization.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isAdmin ? (
+            <form action={saveWizardAutosaveSettingsAction} className="space-y-4 sm:max-w-md">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground" htmlFor="wizard_autosave_interval_minutes">Autosave interval</label>
+                <select
+                  id="wizard_autosave_interval_minutes"
+                  name="wizard_autosave_interval_minutes"
+                  defaultValue={String(context.organization.wizardAutosaveIntervalMinutes ?? 5)}
+                  className="h-11 w-full rounded-2xl border border-input bg-white px-4 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <option value="0">Disabled</option>
+                  <option value="1">Every 1 minute</option>
+                  <option value="5">Every 5 minutes</option>
+                  <option value="10">Every 10 minutes</option>
+                  <option value="15">Every 15 minutes</option>
+                </select>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Default is 5 minutes. Autosave writes the current wizard payload and active step to the server only when something changed since the last successful sync.
+              </p>
+              <Button type="submit">Save wizard autosave settings</Button>
+            </form>
+          ) : (
+            <p className="text-sm text-muted-foreground">Only admins can update organization-wide wizard autosave settings.</p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>Settings</CardTitle>
           <CardDescription>
             Configure per-organization delivery targets for approved documents. These settings are the foundation for the GitHub and Azure DevOps export actions.
@@ -62,6 +98,7 @@ export default async function SettingsPage({
           <div className="flex flex-wrap gap-2">
             <Badge>Organization: {context.organization.name}</Badge>
             <Badge variant="secondary">Role: {context.organization.role}</Badge>
+            <Badge variant="outline">Wizard autosave: {context.organization.wizardAutosaveIntervalMinutes === 0 ? 'Disabled' : `${context.organization.wizardAutosaveIntervalMinutes} min`}</Badge>
           </div>
         </CardContent>
       </Card>

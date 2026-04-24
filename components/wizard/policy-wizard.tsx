@@ -602,6 +602,9 @@ export function PolicyWizard() {
   const { organization } = useOrg();
   const [isGenerating, startGenerating] = useTransition();
   const hasLoadedPersistedDraft = useRef(false);
+  const formTopRef = useRef<HTMLDivElement | null>(null);
+  const lastServerSavedSnapshotRef = useRef<string>(JSON.stringify(defaultWizardValues));
+  const autosaveInFlightRef = useRef(false);
   const { organizationId, currentStep, data, hasHydrated, setOrganization, setCurrentStep, setData, reset, markGenerated } =
     useWizardStore();
 
@@ -666,6 +669,7 @@ export function PolicyWizard() {
     if (organizationId && organizationId !== organization.id) {
       reset(organization.id);
       form.reset(defaultWizardValues);
+      lastServerSavedSnapshotRef.current = JSON.stringify(defaultWizardValues);
       hasLoadedPersistedDraft.current = true;
       return;
     }
@@ -680,9 +684,11 @@ export function PolicyWizard() {
           setCurrentStep(result.currentStep);
           setMaxStepReached(result.currentStep);
           form.reset(result.payload);
+          lastServerSavedSnapshotRef.current = JSON.stringify(result.payload);
           setDraftSyncStatus('saved');
         } else {
           form.reset(data);
+          lastServerSavedSnapshotRef.current = JSON.stringify(data);
         }
       });
     }
@@ -695,6 +701,44 @@ export function PolicyWizard() {
 
     return () => subscription.unsubscribe();
   }, [form, setData]);
+
+  const autosaveIntervalMinutes = organization?.wizardAutosaveIntervalMinutes ?? 5;
+
+  useEffect(() => {
+    if (!hasHydrated || !organization || autosaveIntervalMinutes <= 0) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      if (autosaveInFlightRef.current || isGenerating) {
+        return;
+      }
+
+      const payload = form.getValues();
+      const snapshot = JSON.stringify(payload);
+
+      if (snapshot === lastServerSavedSnapshotRef.current) {
+        return;
+      }
+
+      autosaveInFlightRef.current = true;
+      setDraftSyncStatus('saving');
+
+      saveWizardDraftAction(payload, currentStep)
+        .then((result) => {
+          if (result.ok) {
+            lastServerSavedSnapshotRef.current = snapshot;
+          }
+
+          setDraftSyncStatus(result.ok ? 'saved' : 'error');
+        })
+        .finally(() => {
+          autosaveInFlightRef.current = false;
+        });
+    }, autosaveIntervalMinutes * 60_000);
+
+    return () => window.clearInterval(interval);
+  }, [autosaveIntervalMinutes, currentStep, form, hasHydrated, isGenerating, organization]);
 
   const completion = ((currentStep + 1) / wizardStepTitles.length) * 100;
   const selectedTsc = selectedTscLabels(watchedValues as WizardData);
@@ -748,6 +792,17 @@ export function PolicyWizard() {
     setExpandedDomains((prev) => ({ ...prev, [key]: !prev[key] }));
   }
 
+  function scrollToFormTop() {
+    requestAnimationFrame(() => {
+      formTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
+
+  function navigateToStep(step: number) {
+    setCurrentStep(step);
+    scrollToFormTop();
+  }
+
   if (!organization) {
     return null;
   }
@@ -770,22 +825,26 @@ export function PolicyWizard() {
     }
 
     const nextStep = Math.min(currentStep + 1, wizardStepTitles.length - 1);
-    setCurrentStep(nextStep);
+    navigateToStep(nextStep);
     setMaxStepReached((prev) => Math.max(prev, nextStep));
 
     // Persist draft server-side on every step advance
     setDraftSyncStatus('saving');
     saveWizardDraftAction(form.getValues(), nextStep).then((result) => {
+      if (result.ok) {
+        lastServerSavedSnapshotRef.current = JSON.stringify(form.getValues());
+      }
+
       setDraftSyncStatus(result.ok ? 'saved' : 'error');
     });
   }
 
   function goToPreviousStep() {
-    setCurrentStep(Math.max(currentStep - 1, 0));
+    navigateToStep(Math.max(currentStep - 1, 0));
   }
 
   function jumpToStep(step: number) {
-    setCurrentStep(step);
+    navigateToStep(step);
   }
 
   function generatePolicies() {
@@ -818,11 +877,11 @@ export function PolicyWizard() {
   }
 
   return (
-    <div className="space-y-6 xl:grid xl:grid-cols-[280px_minmax(0,1fr)] xl:gap-6 xl:space-y-0">
-      <Card className="xl:hidden">
+    <div className="space-y-6">
+      <Card className="lg:hidden">
         <CardHeader>
           <CardTitle>Wizard Navigation</CardTitle>
-          <CardDescription>Use this compact step switcher on smaller screens.</CardDescription>
+          <CardDescription>Compact step navigation for smaller screens.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
@@ -832,9 +891,9 @@ export function PolicyWizard() {
             </div>
             <Progress value={completion} />
           </div>
-          <div className="rounded-2xl bg-secondary/50 p-4 text-sm">
+          <div className="rounded-2xl bg-secondary/50 p-3 text-sm">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary/70">Current step</p>
-            <p className="mt-2 font-medium text-foreground">{wizardStepTitles[currentStep]}</p>
+            <p className="mt-1.5 font-medium text-foreground">{wizardStepTitles[currentStep]}</p>
           </div>
           <div className="grid gap-2 sm:grid-cols-2">
             {wizardStepTitles.map((stepTitle, index) => {
@@ -847,13 +906,13 @@ export function PolicyWizard() {
                   type="button"
                   onClick={() => jumpToStep(index)}
                   className={cn(
-                    'rounded-2xl border px-3 py-3 text-left transition-colors',
+                    'rounded-2xl border px-3 py-2.5 text-left transition-colors',
                     index === currentStep ? 'border-primary bg-primary/10 text-foreground' : 'border-border bg-background hover:bg-secondary/50'
                   )}
                 >
                   <p className="text-xs font-semibold uppercase tracking-wide text-primary/70">Step {index + 1}</p>
                   <p className="mt-1 text-sm font-medium text-foreground">{stepTitle}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{statusLabel}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{statusLabel}</p>
                 </button>
               );
             })}
@@ -861,54 +920,12 @@ export function PolicyWizard() {
         </CardContent>
       </Card>
 
-      <Card className="hidden h-fit xl:sticky xl:top-6 xl:block">
-        <CardHeader>
-          <CardTitle>Policy Wizard</CardTitle>
-          <CardDescription>Seven steps, one persisted payload, compiled server-side into tenant-scoped Markdown drafts.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-xs font-medium uppercase tracking-[0.24em] text-primary/70">
-              <span>Progress</span>
-              <span>{Math.round(completion)}%</span>
-            </div>
-            <Progress value={completion} />
-          </div>
-          <ol className="space-y-2">
-            {wizardStepTitles.map((stepTitle, index) => {
-              const sc = stepCompletions[index];
-              const statusIcon = sc?.status === 'complete'
-                ? <Check className="h-3.5 w-3.5 text-emerald-600" />
-                : sc?.status === 'partial'
-                  ? <Circle className="h-3.5 w-3.5 text-amber-500" />
-                  : <CircleDashed className="h-3.5 w-3.5 text-slate-400" />;
-
-              return (
-                <li key={stepTitle}>
-                  <button
-                    type="button"
-                    onClick={() => jumpToStep(index)}
-                    className={cn(
-                      'flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition-colors',
-                      index === currentStep ? 'bg-primary text-primary-foreground' : 'bg-secondary/50 text-foreground hover:bg-secondary'
-                    )}
-                  >
-                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/70 text-xs font-semibold text-primary">
-                      {index + 1}
-                    </span>
-                    <span className="flex-1 text-sm font-medium">{stepTitle}</span>
-                    <span className={cn(index === currentStep && 'text-primary-foreground')}>{statusIcon}</span>
-                  </button>
-                </li>
-              );
-            })}
-          </ol>
-          <div className="rounded-2xl bg-accent/60 p-4 text-sm text-accent-foreground">
-            <p className="font-medium">Active org</p>
-            <p className="mt-2 break-all text-xs">{organization.name}</p>
-            <p className="break-all text-xs opacity-80">{organization.id}</p>
+      <Form {...form}>
+        <form className="space-y-6" onSubmit={(event) => event.preventDefault()}>
+          <div id="wizard-form-top" ref={formTopRef} className="space-y-2 lg:space-y-0">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary/70 lg:hidden">Draft status</p>
             <p className={cn(
-              'mt-2 text-[10px] font-medium uppercase tracking-wide',
+              'text-[11px] font-medium uppercase tracking-wide lg:hidden',
               draftSyncStatus === 'saved'  && 'text-emerald-600',
               draftSyncStatus === 'saving' && 'text-amber-500',
               draftSyncStatus === 'error'  && 'text-red-500',
@@ -919,12 +936,12 @@ export function PolicyWizard() {
               {draftSyncStatus === 'error'  && '✗ Save failed — localStorage only'}
               {draftSyncStatus === 'idle'   && 'Draft in local storage'}
             </p>
+            <p className="text-[10px] text-muted-foreground/70 lg:hidden">
+              {autosaveIntervalMinutes > 0
+                ? `Server autosave every ${autosaveIntervalMinutes} minute${autosaveIntervalMinutes === 1 ? '' : 's'}`
+                : 'Timed server autosave disabled'}
+            </p>
           </div>
-        </CardContent>
-      </Card>
-
-      <Form {...form}>
-        <form className="space-y-6" onSubmit={(event) => event.preventDefault()}>
           <Card className="min-w-0 overflow-hidden">
             <CardContent className="p-6">
               {currentStep === 0 ? (

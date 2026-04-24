@@ -20,6 +20,60 @@ function buildSettingsRoute(query?: string) {
   return `/settings?${query}` as never;
 }
 
+const validWizardAutosaveIntervals = new Set([0, 1, 5, 10, 15]);
+
+export async function saveWizardAutosaveSettingsAction(formData: FormData) {
+  const context = await getDashboardContext();
+
+  if (!context?.organization) {
+    redirect('/login');
+  }
+
+  if (context.organization.role !== 'admin') {
+    redirect(buildSettingsRoute('error=Only%20admins%20can%20update%20wizard%20settings'));
+  }
+
+  const rawInterval = Number(formData.get('wizard_autosave_interval_minutes') ?? 5);
+  const wizardAutosaveIntervalMinutes = Number.isFinite(rawInterval) ? rawInterval : 5;
+
+  if (!validWizardAutosaveIntervals.has(wizardAutosaveIntervalMinutes)) {
+    redirect(buildSettingsRoute('error=Invalid%20wizard%20autosave%20interval'));
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data: organization, error: loadError } = await supabase
+    .from('organizations')
+    .select('metadata')
+    .eq('id', context.organization.id)
+    .single();
+
+  if (loadError) {
+    redirect(buildSettingsRoute(`error=${encodeURIComponent(loadError.message)}`));
+  }
+
+  const currentMetadata = organization?.metadata && typeof organization.metadata === 'object'
+    ? organization.metadata as Record<string, unknown>
+    : {};
+
+  const { error } = await supabase
+    .from('organizations')
+    .update({
+      metadata: {
+        ...currentMetadata,
+        wizardAutosaveIntervalMinutes,
+      },
+    })
+    .eq('id', context.organization.id);
+
+  if (error) {
+    redirect(buildSettingsRoute(`error=${encodeURIComponent(error.message)}`));
+  }
+
+  revalidatePath('/settings');
+  revalidatePath('/wizard');
+  redirect(buildSettingsRoute('success=Wizard%20autosave%20settings%20updated'));
+}
+
 export async function saveIntegrationAction(formData: FormData) {
   const context = await getDashboardContext();
 
