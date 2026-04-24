@@ -179,7 +179,7 @@ Open `http://localhost:${PORT}/wizard` after signing in as a fresh admin user.
 
 1. **Wizard shell & step map**
        Expected:
-       - Left rail shows 10 steps in this order: Welcome, Governance, System Scope, TSC Selection, Infrastructure, Security Assessment, Security Tooling, Operations, Review, Generate.
+      - Left rail shows 10 steps in this order: Welcome, System Scope, Governance, TSC Selection, Infrastructure, Security Assessment, Security Tooling, Operations, Review, Generate.
        - Active organization name and org ID are visible.
        - A draft sync status is visible in the sidebar.
        Report back with:
@@ -202,24 +202,39 @@ Open `http://localhost:${PORT}/wizard` after signing in as a fresh admin user.
 3. **First-time compliance guidance path**
        Action:
        - On Welcome, set org age to `< 1 year` and compliance maturity to `First time — we're just getting started`.
-       - Continue to Governance.
+      - In System Scope, add at least one recognizable sub-service organization such as `Okta`, `Google Workspace`, `Microsoft`, or `Rippling`, then open Governance.
        Expected:
        - Governance shows a blue first-time guidance callout.
+      - Governance shows the training tool suggestions list and promotes vendor-aware recommendations that align with the sub-service organization you entered.
        - Training and acknowledgement questions allow a `not yet` path without immediate validation failure.
        Report back with:
        - Whether the blue callout appears.
+      - Which training recommendations appeared after entering the vendor.
        - Any wording drift in the guidance.
        - Whether the cadence controls allow a first-time/not-yet answer.
 
 4. **System Scope validation & help text**
        Action:
        - Enter a short system description under 20 characters and try to continue.
+      - Add a sub-service organization and confirm the vendor card offers grouped vendor categories plus an `Other` option for manual entry.
+      - Verify one vendor can be selected directly from the grouped list, then add another and choose `Other` to confirm the manual vendor-name input appears.
+      - Confirm the role field now behaves the same way: choose a standard role from the list, then test `Other` and verify the manual role input appears.
+      - Select obvious vendors such as `Okta`, `Datadog`, `GitHub`, or `Rippling` and confirm the role auto-fills to the expected standard classification before you override it manually.
+      - Confirm an inline hint appears when the role was auto-filled from the vendor selection and disappears after you manually change the role.
        - Then correct it, select at least one data type, and choose multi-tenant or single-tenant.
        Expected:
        - Step blocks until system name, a 20+ character description, and at least one data type are provided.
+      - The sub-service organization section is available before Governance and accepts multiple vendors.
+      - Selecting `Other` reveals a manual vendor-name field without breaking the rest of the vendor card.
+      - Vendor options are grouped into clear categories, and the role field supports both standard classifications and a manual `Other` path.
+      - Selecting an obvious vendor auto-fills the role when the role is still blank or still on the previous auto-filled default.
+      - An inline hint explains when the current role came from vendor auto-fill.
        - The deployment model helper explains the difference between multi-tenant and single-tenant.
        Report back with:
        - Whether the 20-character rule is enforced.
+      - Whether the earlier vendor section felt clear enough to describe the system dependencies.
+      - Whether the grouped vendor list covered the common vendors you expected, whether the `Other` paths for both vendor and role behaved correctly, and whether the role auto-fill matched your expectation.
+      - Whether the auto-fill hint appeared and cleared at the right time.
        - Which helper text rendered.
        - Whether the step advanced after fixing inputs.
 

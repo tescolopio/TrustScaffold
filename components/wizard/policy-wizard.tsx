@@ -63,13 +63,83 @@ import {
 import { useWizardStore } from '@/lib/wizard/store';
 import { computeAssessmentSummary, computeStepCompletions, domainBoolFields } from '@/lib/wizard/security-scoring';
 
+const customSubserviceVendorValue = '__other__';
+const customSubserviceRoleValue = '__other_role__';
+
+const subserviceVendorGroups = [
+  {
+    label: 'Cloud & Infrastructure',
+    options: ['AWS', 'Azure', 'GCP', 'Cloudflare'],
+  },
+  {
+    label: 'Identity & Productivity',
+    options: ['Okta', 'Microsoft', 'Google Workspace'],
+  },
+  {
+    label: 'Workforce & Collaboration',
+    options: ['Rippling', 'BambooHR', 'Atlassian'],
+  },
+  {
+    label: 'Engineering & Operations',
+    options: ['GitHub', 'GitLab', 'Datadog', 'PagerDuty'],
+  },
+  {
+    label: 'Support & Customer Operations',
+    options: ['Zendesk'],
+  },
+];
+
+const subserviceVendorOptions = subserviceVendorGroups.flatMap((group) => group.options);
+
+const subserviceRoleOptions = [
+  'Cloud Hosting',
+  'Identity Provider',
+  'Email & Productivity Suite',
+  'HRIS',
+  'Version Control / Source Code Hosting',
+  'Monitoring / Observability',
+  'Incident Management / On-call',
+  'Customer Support Platform',
+  'Data Storage / Database',
+  'Security Awareness Training',
+];
+
+const suggestedSubserviceRolesByVendor: Record<string, string> = {
+  AWS: 'Cloud Hosting',
+  Azure: 'Cloud Hosting',
+  GCP: 'Cloud Hosting',
+  Cloudflare: 'Cloud Hosting',
+  Okta: 'Identity Provider',
+  Microsoft: 'Email & Productivity Suite',
+  'Google Workspace': 'Email & Productivity Suite',
+  Rippling: 'HRIS',
+  BambooHR: 'HRIS',
+  GitHub: 'Version Control / Source Code Hosting',
+  GitLab: 'Version Control / Source Code Hosting',
+  Datadog: 'Monitoring / Observability',
+  PagerDuty: 'Incident Management / On-call',
+  Zendesk: 'Customer Support Platform',
+};
+
+function isKnownSubserviceVendor(name: string) {
+  return subserviceVendorOptions.includes(name.trim());
+}
+
+function isKnownSubserviceRole(role: string) {
+  return subserviceRoleOptions.includes(role.trim());
+}
+
+function getSuggestedSubserviceRole(vendorName: string) {
+  return suggestedSubserviceRolesByVendor[vendorName.trim()] ?? '';
+}
+
 const stepFields: FieldPath<WizardData>[][] = [
   // Step 0: Welcome
   ['company.name', 'company.website', 'company.primaryContactName', 'company.primaryContactEmail', 'company.industry', 'company.orgAge', 'company.complianceMaturity', 'company.targetAuditType'],
-  // Step 1: Governance
-  ['governance.acknowledgementCadence', 'governance.boardMeetingFrequency', 'governance.orgChartMaintenance', 'governance.internalAuditFrequency', 'training.securityAwarenessTrainingTool', 'training.trainingCadence'],
-  // Step 2: System Scope
+  // Step 1: System Scope
   ['scope.systemName', 'scope.systemDescription', 'scope.dataTypesHandled'],
+  // Step 2: Governance
+  ['governance.acknowledgementCadence', 'governance.boardMeetingFrequency', 'governance.orgChartMaintenance', 'governance.internalAuditFrequency', 'training.securityAwarenessTrainingTool', 'training.trainingCadence'],
   // Step 3: TSC Selection
   ['tscSelections.availability', 'tscSelections.confidentiality', 'tscSelections.processingIntegrity', 'tscSelections.privacy'],
   // Step 4: Infrastructure
@@ -94,6 +164,47 @@ const stepFields: FieldPath<WizardData>[][] = [
   // Step 9: Generate
   [],
 ];
+
+type TrainingToolOption = {
+  value: string;
+  label: string;
+  vendorMatchers?: string[];
+};
+
+const securityAwarenessTrainingToolOptions: TrainingToolOption[] = [
+  { value: 'KnowBe4', label: 'KnowBe4', vendorMatchers: ['knowbe4'] },
+  { value: 'Proofpoint ZenGuide', label: 'Proofpoint ZenGuide', vendorMatchers: ['proofpoint', 'wombat'] },
+  { value: 'Hoxhunt', label: 'Hoxhunt', vendorMatchers: ['hoxhunt'] },
+  { value: 'Curricula', label: 'Curricula', vendorMatchers: ['curricula'] },
+  { value: 'Wizer', label: 'Wizer', vendorMatchers: ['wizer'] },
+  { value: 'NINJIO', label: 'NINJIO', vendorMatchers: ['ninjio'] },
+  { value: 'Living Security', label: 'Living Security', vendorMatchers: ['living security'] },
+  { value: 'Microsoft Defender for Office 365 Attack Simulation Training', label: 'Microsoft Defender for Office 365 Attack Simulation Training', vendorMatchers: ['microsoft', 'office 365', 'entra'] },
+  { value: 'Google Workspace Security Awareness', label: 'Google Workspace Security Awareness', vendorMatchers: ['google', 'workspace'] },
+  { value: 'Rippling Learning', label: 'Rippling Learning', vendorMatchers: ['rippling'] },
+  { value: 'Manual / In-house', label: 'Manual / In-house' },
+  { value: 'Other / Custom', label: 'Other / Custom' },
+];
+
+function getRecommendedTrainingTools(subservices: WizardData['subservices']) {
+  const vendorText = subservices
+    .map((subservice) => `${subservice.name} ${subservice.role}`.toLowerCase())
+    .join(' ');
+
+  const recommended = securityAwarenessTrainingToolOptions.filter((option) =>
+    option.vendorMatchers?.some((matcher) => vendorText.includes(matcher)),
+  );
+
+  return {
+    recommended,
+    ordered: [
+      ...recommended,
+      ...securityAwarenessTrainingToolOptions.filter(
+        (option) => !recommended.some((match) => match.value === option.value),
+      ),
+    ],
+  };
+}
 
 function StepShell({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
   return (
@@ -266,8 +377,8 @@ function GenerateStep({
 
   const missingFields: { label: string; step: number }[] = [
     ...(!watchedValues.company?.name?.trim() ? [{ label: 'Company name', step: 0 }] : []),
-    ...(!watchedValues.scope?.systemName?.trim() ? [{ label: 'System name', step: 2 }] : []),
-    ...(!watchedValues.scope?.systemDescription?.trim() ? [{ label: 'System description', step: 2 }] : []),
+    ...(!watchedValues.scope?.systemName?.trim() ? [{ label: 'System name', step: 1 }] : []),
+    ...(!watchedValues.scope?.systemDescription?.trim() ? [{ label: 'System description', step: 1 }] : []),
   ];
 
   return (
@@ -411,12 +522,45 @@ export function PolicyWizard() {
     name: 'subservices',
   });
 
+  const [customSubserviceVendorIds, setCustomSubserviceVendorIds] = React.useState<Record<string, boolean>>({});
+  const [customSubserviceRoleIds, setCustomSubserviceRoleIds] = React.useState<Record<string, boolean>>({});
+  const [autoFilledSubserviceRoleIds, setAutoFilledSubserviceRoleIds] = React.useState<Record<string, boolean>>({});
   const [draftSyncStatus, setDraftSyncStatus] = React.useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [maxStepReached, setMaxStepReached] = React.useState(currentStep);
   const watchedInfrastructure = form.watch('infrastructure.type');
   const watchedCloudProviders = form.watch('infrastructure.cloudProviders') ?? [];
   const watchedHostsOwnHardware = form.watch('infrastructure.hostsOwnHardware') ?? false;
   const watchedValues = form.watch();
+  const trainingToolSuggestions = useMemo(
+    () => getRecommendedTrainingTools(watchedValues.subservices ?? []),
+    [watchedValues.subservices],
+  );
+
+  useEffect(() => {
+    setCustomSubserviceVendorIds((previous) => {
+      const next: Record<string, boolean> = {};
+
+      fields.forEach((entry, index) => {
+        const currentName = watchedValues.subservices?.[index]?.name?.trim() ?? '';
+        next[entry.id] = previous[entry.id] ?? (currentName.length > 0 && !isKnownSubserviceVendor(currentName));
+      });
+
+      return next;
+    });
+  }, [fields, watchedValues.subservices]);
+
+  useEffect(() => {
+    setCustomSubserviceRoleIds((previous) => {
+      const next: Record<string, boolean> = {};
+
+      fields.forEach((entry, index) => {
+        const currentRole = watchedValues.subservices?.[index]?.role?.trim() ?? '';
+        next[entry.id] = previous[entry.id] ?? (currentRole.length > 0 && !isKnownSubserviceRole(currentRole));
+      });
+
+      return next;
+    });
+  }, [fields, watchedValues.subservices]);
 
   useEffect(() => {
     if (!hasHydrated || !organization) {
@@ -772,7 +916,7 @@ export function PolicyWizard() {
                 </StepShell>
               ) : null}
 
-              {currentStep === 1 ? (
+              {currentStep === 2 ? (
                 <StepShell
                   title="Governance, People & Training"
                   description="Capture the organizational controls that auditors evaluate for CC1 (Control Environment), CC4 (Monitoring), and CC1.4 (Competence). These questions determine which governance documents and evidence the checklist will generate."
@@ -933,8 +1077,44 @@ export function PolicyWizard() {
                       <FormField control={form.control} name="training.securityAwarenessTrainingTool" render={({ field }) => (
                         <FormItem>
                           <FormLabel>Security awareness training tool</FormLabel>
-                          <FormControl><Input {...field} placeholder="e.g., KnowBe4, Curricula, Wizer, Manual" /></FormControl>
-                          <FormDescription>The platform used to deliver and track security awareness training.</FormDescription>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              list="security-awareness-training-tool-options"
+                              placeholder="Select or type a training platform"
+                            />
+                          </FormControl>
+                          <datalist id="security-awareness-training-tool-options">
+                            {trainingToolSuggestions.ordered.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </datalist>
+                          <FormDescription>
+                            Choose the platform used to deliver and track security awareness training. Recommendations refresh whenever you add or update the sub-service organizations captured in System Scope.
+                          </FormDescription>
+                          {trainingToolSuggestions.recommended.length > 0 ? (
+                            <div className="space-y-2 rounded-xl border border-blue-200 bg-blue-50 p-3">
+                              <p className="text-xs font-medium text-blue-900">Suggested based on your current sub-service organizations</p>
+                              <div className="flex flex-wrap gap-2">
+                                {trainingToolSuggestions.recommended.map((option) => (
+                                  <button
+                                    key={option.value}
+                                    type="button"
+                                    onClick={() => field.onChange(option.value)}
+                                    className="rounded-full border border-blue-300 bg-white px-3 py-1 text-xs font-medium text-blue-800 transition-colors hover:border-blue-400 hover:bg-blue-100"
+                                  >
+                                    {option.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="rounded-xl border border-border bg-white px-3 py-2 text-xs text-muted-foreground">
+                              Common options include KnowBe4, Proofpoint ZenGuide, Hoxhunt, Wizer, Curricula, Microsoft Defender for Office 365 Attack Simulation Training, Google Workspace Security Awareness, and Manual / In-house.
+                            </div>
+                          )}
                           <FormMessage />
                         </FormItem>
                       )} />
@@ -986,10 +1166,10 @@ export function PolicyWizard() {
                 </StepShell>
               ) : null}
 
-              {currentStep === 2 ? (
+              {currentStep === 1 ? (
                 <StepShell
                   title="System Scope"
-                  description="Define the product and data boundary that the generated policies should describe."
+                  description="Define the product boundary, key sub-service organizations, and data flows that the generated policies should describe."
                 >
                   <div className="grid gap-6">
 
@@ -1031,6 +1211,270 @@ export function PolicyWizard() {
                         </FormItem>
                       )}
                     />
+
+                    <div className="space-y-4 rounded-2xl border border-border bg-white p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium text-foreground">Sub-service organizations</p>
+                          <p className="text-sm text-muted-foreground">Capture the vendors or service providers that materially support the in-scope system so Governance can recommend aligned training and vendor-management language on the first pass.</p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => append({ name: '', description: '', role: '', dataShared: '', reviewCadence: 'annual', hasAssuranceReport: false, assuranceReportType: 'none', controlInclusion: 'carve-out' })}
+                        >
+                          <Plus className="mr-2 h-4 w-4" />
+                          Add vendor
+                        </Button>
+                      </div>
+
+                      <p className="text-sm text-muted-foreground">Examples: your cloud host, identity provider, HRIS, customer support platform, or any vendor that processes customer or employee data for this system.</p>
+
+                      <div className="space-y-4">
+                        {fields.length === 0 ? (
+                          <div className="rounded-2xl border border-dashed border-border bg-secondary/30 px-4 py-6 text-sm text-muted-foreground">
+                            Add the major vendors tied to this system if you rely on them for hosting, identity, workforce operations, monitoring, or customer data processing.
+                          </div>
+                        ) : null}
+
+                        {fields.map((subserviceField, index) => (
+                          <div key={subserviceField.id} className="space-y-3 rounded-2xl bg-secondary/50 p-4">
+                            <div className="grid gap-3 md:grid-cols-[1fr_1.6fr_auto] md:items-start">
+                            <FormField
+                              control={form.control}
+                              name={`subservices.${index}.name`}
+                              render={({ field }) => {
+                                const isCustomVendor = customSubserviceVendorIds[subserviceField.id] || Boolean(field.value && !isKnownSubserviceVendor(field.value));
+                                const selectedVendorValue = isCustomVendor ? customSubserviceVendorValue : field.value || '';
+
+                                return (
+                                  <FormItem>
+                                    <FormLabel>Vendor name</FormLabel>
+                                    <FormControl>
+                                      <select
+                                        value={selectedVendorValue}
+                                        onChange={(event) => {
+                                          const nextValue = event.target.value;
+                                          const isCustom = nextValue === customSubserviceVendorValue;
+                                          const vendorFieldPath = `subservices.${index}.name` as const;
+                                          const roleFieldPath = `subservices.${index}.role` as const;
+                                          const currentVendorName = form.getValues(vendorFieldPath) ?? '';
+                                          const currentRole = form.getValues(roleFieldPath) ?? '';
+                                          const previousSuggestedRole = getSuggestedSubserviceRole(currentVendorName);
+                                          const nextVendorName = isCustom ? '' : nextValue;
+                                          const nextSuggestedRole = getSuggestedSubserviceRole(nextVendorName);
+
+                                          setCustomSubserviceVendorIds((previous) => ({
+                                            ...previous,
+                                            [subserviceField.id]: isCustom,
+                                          }));
+
+                                          field.onChange(nextVendorName);
+
+                                          if (!currentRole || currentRole === previousSuggestedRole) {
+                                            setCustomSubserviceRoleIds((previous) => ({
+                                              ...previous,
+                                              [subserviceField.id]: false,
+                                            }));
+                                            setAutoFilledSubserviceRoleIds((previous) => ({
+                                              ...previous,
+                                              [subserviceField.id]: Boolean(nextSuggestedRole),
+                                            }));
+                                            form.setValue(roleFieldPath, nextSuggestedRole, {
+                                              shouldDirty: true,
+                                              shouldTouch: true,
+                                              shouldValidate: true,
+                                            });
+                                          }
+                                        }}
+                                        className="h-11 w-full rounded-2xl border border-input bg-white px-4 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                      >
+                                        <option value="">Select a vendor</option>
+                                        {subserviceVendorGroups.map((group) => (
+                                          <optgroup key={group.label} label={group.label}>
+                                            {group.options.map((option) => (
+                                              <option key={option} value={option}>
+                                                {option}
+                                              </option>
+                                            ))}
+                                          </optgroup>
+                                        ))}
+                                        <option value={customSubserviceVendorValue}>Other</option>
+                                      </select>
+                                    </FormControl>
+                                    {isCustomVendor ? (
+                                      <div className="mt-3">
+                                        <Input
+                                          value={field.value ?? ''}
+                                          onChange={(event) => field.onChange(event.target.value)}
+                                          placeholder="Enter vendor name"
+                                        />
+                                      </div>
+                                    ) : null}
+                                    <FormMessage />
+                                  </FormItem>
+                                );
+                              }}
+                            />
+                            <FormField
+                              control={form.control}
+                              name={`subservices.${index}.description`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Description</FormLabel>
+                                  <FormControl>
+                                    <Input {...field} placeholder="Identity provider used for workforce SSO and MFA" />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name={`subservices.${index}.reviewCadence`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Assurance review cadence</FormLabel>
+                                  <FormControl>
+                                    <select
+                                      {...field}
+                                      className="h-11 w-full rounded-2xl border border-input bg-white px-4 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                    >
+                                      {subserviceReviewCadenceOptions.map((option) => (
+                                        <option key={option.value} value={option.value}>
+                                          {option.label}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <div className="pt-7">
+                              <Button type="button" variant="ghost" size="icon" onClick={() => remove(index)}>
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                            </div>
+                            <div className="grid gap-3 md:grid-cols-2">
+                              <FormField
+                                control={form.control}
+                                name={`subservices.${index}.role`}
+                                render={({ field }) => {
+                                  const isCustomRole = customSubserviceRoleIds[subserviceField.id] || Boolean(field.value && !isKnownSubserviceRole(field.value));
+                                  const selectedRoleValue = isCustomRole ? customSubserviceRoleValue : field.value || '';
+                                  const showAutoFilledHint = autoFilledSubserviceRoleIds[subserviceField.id] && Boolean(field.value) && !isCustomRole;
+
+                                  return (
+                                    <FormItem>
+                                      <FormLabel>Role <span className="text-xs text-muted-foreground">(classify what this vendor does for the system)</span></FormLabel>
+                                      <FormControl>
+                                        <select
+                                          value={selectedRoleValue}
+                                          onChange={(event) => {
+                                            const nextValue = event.target.value;
+                                            const isCustom = nextValue === customSubserviceRoleValue;
+
+                                            setCustomSubserviceRoleIds((previous) => ({
+                                              ...previous,
+                                              [subserviceField.id]: isCustom,
+                                            }));
+                                            setAutoFilledSubserviceRoleIds((previous) => ({
+                                              ...previous,
+                                              [subserviceField.id]: false,
+                                            }));
+
+                                            field.onChange(isCustom ? '' : nextValue);
+                                          }}
+                                          className="h-11 w-full rounded-2xl border border-input bg-white px-4 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                        >
+                                          <option value="">Select a role</option>
+                                          {subserviceRoleOptions.map((option) => (
+                                            <option key={option} value={option}>
+                                              {option}
+                                            </option>
+                                          ))}
+                                          <option value={customSubserviceRoleValue}>Other</option>
+                                        </select>
+                                      </FormControl>
+                                      {isCustomRole ? (
+                                        <div className="mt-3">
+                                          <Input
+                                            value={field.value ?? ''}
+                                            onChange={(event) => {
+                                              setAutoFilledSubserviceRoleIds((previous) => ({
+                                                ...previous,
+                                                [subserviceField.id]: false,
+                                              }));
+                                              field.onChange(event.target.value);
+                                            }}
+                                            placeholder="Enter vendor role"
+                                          />
+                                        </div>
+                                      ) : null}
+                                      {showAutoFilledHint ? (
+                                        <p className="mt-2 text-xs text-muted-foreground">Auto-filled from vendor selection.</p>
+                                      ) : null}
+                                    </FormItem>
+                                  );
+                                }}
+                              />
+                              <FormField
+                                control={form.control}
+                                name={`subservices.${index}.dataShared`}
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>Data shared <span className="text-xs text-muted-foreground">(e.g., PII, credentials, support artifacts)</span></FormLabel>
+                                    <FormControl>
+                                      <Input {...field} placeholder="Workforce identities and MFA metadata" />
+                                    </FormControl>
+                                  </FormItem>
+                                )}
+                              />
+                            </div>
+                            <div className="grid gap-3 md:grid-cols-3">
+                              <FormField control={form.control} name={`subservices.${index}.hasAssuranceReport`} render={({ field }) => (
+                                <FormItem className="flex items-center gap-3 pt-6">
+                                  <FormControl><Checkbox checked={field.value} onCheckedChange={(checked) => field.onChange(Boolean(checked))} /></FormControl>
+                                  <FormLabel>Has assurance report</FormLabel>
+                                </FormItem>
+                              )} />
+                              {form.watch(`subservices.${index}.hasAssuranceReport`) && (
+                                <>
+                                  <FormField control={form.control} name={`subservices.${index}.assuranceReportType`} render={({ field }) => (
+                                    <FormItem>
+                                      <FormLabel>Report type</FormLabel>
+                                      <FormControl>
+                                        <select {...field} className="h-11 w-full rounded-2xl border border-input bg-white px-4 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                                          {assuranceReportTypeOptions.map((opt) => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                                        </select>
+                                      </FormControl>
+                                    </FormItem>
+                                  )} />
+                                  <FormField control={form.control} name={`subservices.${index}.controlInclusion`} render={({ field }) => (
+                                    <FormItem>
+                                      <FormLabel>Control inclusion method</FormLabel>
+                                      <FormControl>
+                                        <select {...field} className="h-11 w-full rounded-2xl border border-input bg-white px-4 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                                          {controlInclusionOptions.map((opt) => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                                        </select>
+                                      </FormControl>
+                                    </FormItem>
+                                  )} />
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <AuditorLensCallout
+                        criterion="CC9.2"
+                        message="Every sub-service organization listed here becomes a row in your vendor-management matrix. Auditors will ask for due-diligence artifacts such as SOC reports, penetration test summaries, and review cadence evidence for each one."
+                      />
+                    </div>
 
                     {/* Data Types */}
                     <FormField
@@ -2295,144 +2739,6 @@ export function PolicyWizard() {
                       criterion="CC9.2"
                       message="Every sub-service organization listed here becomes a row in your vendor-management matrix. Auditors will ask for due-diligence artifacts (SOC 2 reports, penetration test summaries) for each one. Include the role and data shared to generate accurate risk language."
                     />
-
-                    <div className="space-y-4 rounded-2xl border border-border bg-white p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-medium text-foreground">Subservice organizations</p>
-                          <p className="text-sm text-muted-foreground">These entries are transformed into vendor-management and risk policy language.</p>
-                        </div>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => append({ name: '', description: '', role: '', dataShared: '', reviewCadence: 'annual', hasAssuranceReport: false, assuranceReportType: 'none', controlInclusion: 'carve-out' })}
-                        >
-                          <Plus className="mr-2 h-4 w-4" />
-                          Add vendor
-                        </Button>
-                      </div>
-
-                      <div className="space-y-4">
-                        {fields.map((field, index) => (
-                          <div key={field.id} className="space-y-3 rounded-2xl bg-secondary/50 p-4">
-                            <div className="grid gap-3 md:grid-cols-[1fr_1.6fr_auto] md:items-start">
-                            <FormField
-                              control={form.control}
-                              name={`subservices.${index}.name`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Vendor name</FormLabel>
-                                  <FormControl>
-                                    <Input {...field} />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                            <FormField
-                              control={form.control}
-                              name={`subservices.${index}.description`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Description</FormLabel>
-                                  <FormControl>
-                                    <Input {...field} />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                            <FormField
-                              control={form.control}
-                              name={`subservices.${index}.reviewCadence`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Assurance review cadence</FormLabel>
-                                  <FormControl>
-                                    <select
-                                      {...field}
-                                      className="h-11 w-full rounded-2xl border border-input bg-white px-4 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                    >
-                                      {subserviceReviewCadenceOptions.map((option) => (
-                                        <option key={option.value} value={option.value}>
-                                          {option.label}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                            <div className="pt-7">
-                              <Button type="button" variant="ghost" size="icon" onClick={() => remove(index)}>
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                            </div>
-                            <div className="grid gap-3 md:grid-cols-2">
-                              <FormField
-                                control={form.control}
-                                name={`subservices.${index}.role`}
-                                render={({ field }) => (
-                                  <FormItem>
-                                    <FormLabel>Role <span className="text-xs text-muted-foreground">(e.g., Identity Provider, Database)</span></FormLabel>
-                                    <FormControl>
-                                      <Input {...field} placeholder="Identity Provider" />
-                                    </FormControl>
-                                  </FormItem>
-                                )}
-                              />
-                              <FormField
-                                control={form.control}
-                                name={`subservices.${index}.dataShared`}
-                                render={({ field }) => (
-                                  <FormItem>
-                                    <FormLabel>Data shared <span className="text-xs text-muted-foreground">(e.g., PII, Credentials)</span></FormLabel>
-                                    <FormControl>
-                                      <Input {...field} placeholder="PII, Authentication secrets" />
-                                    </FormControl>
-                                  </FormItem>
-                                )}
-                              />
-                            </div>
-                            <div className="grid gap-3 md:grid-cols-3">
-                              <FormField control={form.control} name={`subservices.${index}.hasAssuranceReport`} render={({ field }) => (
-                                <FormItem className="flex items-center gap-3 pt-6">
-                                  <FormControl><Checkbox checked={field.value} onCheckedChange={(checked) => field.onChange(Boolean(checked))} /></FormControl>
-                                  <FormLabel>Has assurance report</FormLabel>
-                                </FormItem>
-                              )} />
-                              {form.watch(`subservices.${index}.hasAssuranceReport`) && (
-                                <>
-                                  <FormField control={form.control} name={`subservices.${index}.assuranceReportType`} render={({ field }) => (
-                                    <FormItem>
-                                      <FormLabel>Report type</FormLabel>
-                                      <FormControl>
-                                        <select {...field} className="h-11 w-full rounded-2xl border border-input bg-white px-4 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                                          {assuranceReportTypeOptions.map((opt) => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
-                                        </select>
-                                      </FormControl>
-                                    </FormItem>
-                                  )} />
-                                  <FormField control={form.control} name={`subservices.${index}.controlInclusion`} render={({ field }) => (
-                                    <FormItem>
-                                      <FormLabel>Control inclusion method</FormLabel>
-                                      <FormControl>
-                                        <select {...field} className="h-11 w-full rounded-2xl border border-input bg-white px-4 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                                          {controlInclusionOptions.map((opt) => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
-                                        </select>
-                                      </FormControl>
-                                    </FormItem>
-                                  )} />
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
                   </div>
                 </StepShell>
               ) : null}

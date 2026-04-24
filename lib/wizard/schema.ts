@@ -389,8 +389,8 @@ export const defaultWizardValues: WizardData = {
 
 export const wizardStepTitles = [
   'Welcome',
-  'Governance',
   'System Scope',
+  'Governance',
   'TSC Selection',
   'Infrastructure',
   'Security Assessment',
