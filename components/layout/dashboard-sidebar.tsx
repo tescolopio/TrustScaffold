@@ -19,11 +19,9 @@ export const dashboardNavigation = [
 
 export function DashboardSidebar() {
   const pathname = usePathname();
-  const { currentStep, hasHydrated, setCurrentStep } = useWizardStore((state) => ({
-    currentStep: state.currentStep,
-    hasHydrated: state.hasHydrated,
-    setCurrentStep: state.setCurrentStep,
-  }));
+  const currentStep = useWizardStore((state) => state.currentStep);
+  const hasHydrated = useWizardStore((state) => state.hasHydrated);
+  const setCurrentStep = useWizardStore((state) => state.setCurrentStep);
   const showWizardSteps = pathname === '/wizard';
 
   function jumpToWizardStep(step: number) {
