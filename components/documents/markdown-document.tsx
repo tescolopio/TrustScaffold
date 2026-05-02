@@ -1,6 +1,7 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
+import { MermaidDiagram } from '@/components/documents/mermaid-diagram';
 import { cn } from '@/lib/utils';
 
 function stripFrontmatter(markdown: string) {
@@ -28,7 +29,16 @@ export function MarkdownDocument({ markdown, className }: { markdown: string; cl
           a: ({ className: nodeClassName, ...props }) => <a {...props} className={cn('text-primary underline underline-offset-4', nodeClassName)} target="_blank" rel="noreferrer" />,
           blockquote: ({ className: nodeClassName, ...props }) => <blockquote {...props} className={cn('my-5 border-l-4 border-primary/40 bg-secondary/30 py-2 pl-4 text-muted-foreground', nodeClassName)} />,
           hr: ({ className: nodeClassName, ...props }) => <hr {...props} className={cn('my-8 border-border', nodeClassName)} />,
-          code: ({ className: nodeClassName, ...props }) => <code {...props} className={cn('rounded bg-secondary px-1.5 py-0.5 text-sm text-foreground', nodeClassName)} />,
+          code: ({ className: nodeClassName, children, ...props }) => {
+            const textContent = String(children).replace(/\n$/, '');
+            const isMermaidBlock = typeof nodeClassName === 'string' && nodeClassName.includes('language-mermaid');
+
+            if (isMermaidBlock) {
+              return <MermaidDiagram chart={textContent} />;
+            }
+
+            return <code {...props} className={cn('rounded bg-secondary px-1.5 py-0.5 text-sm text-foreground', nodeClassName)}>{children}</code>;
+          },
           pre: ({ className: nodeClassName, ...props }) => <pre {...props} className={cn('my-5 overflow-x-auto rounded-2xl border border-border bg-secondary/40 p-4 text-sm text-foreground', nodeClassName)} />,
           table: ({ className: nodeClassName, ...props }) => (
             <div className="my-6 overflow-x-auto rounded-2xl border border-border">

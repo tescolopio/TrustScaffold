@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { renderTemplate, stripMappingMetadata } from '@/lib/documents/template-engine';
 import { canRejectOrRegenerateDocuments } from '@/lib/auth/roles';
 import { getDashboardContext } from '@/lib/auth/get-dashboard-context';
+import { deriveDocumentArtifactStates } from '@/lib/documents/document-artifacts';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
 import { buildTemplatePayload } from '@/lib/wizard/template-payload';
 import { selectedCriteriaCodes, wizardSchema, type WizardData } from '@/lib/wizard/schema';
@@ -16,10 +17,12 @@ type CompileDocsResult =
 type CompiledDocument = {
   organization_id: string;
   template_id: string;
+  template_slug: string;
   title: string;
   file_name: string;
   content_markdown: string;
   input_payload: WizardData;
+  artifact_state: ReturnType<typeof deriveDocumentArtifactStates>;
   status: 'draft';
   version: number;
 };
@@ -81,10 +84,17 @@ export async function compileDocsAction(rawWizardData: WizardData): Promise<Comp
       docs.push({
         organization_id: organization.id,
         template_id: template.id,
+        template_slug: template.slug,
         title: template.name,
         file_name: renderTemplate(template.output_filename_pattern, mergedVariables, template.name),
         content_markdown: stripMappingMetadata(renderTemplate(template.markdown_template, mergedVariables, template.name)),
         input_payload: parsed.data,
+        artifact_state: deriveDocumentArtifactStates({
+          documentSlug: template.slug,
+          documentStatus: 'draft',
+          sourcePayload: parsed.data,
+          currentDraftPayload: parsed.data,
+        }),
         status: 'draft',
         version: 1,
       });
@@ -133,6 +143,8 @@ export async function compileDocsAction(rawWizardData: WizardData): Promise<Comp
           file_name: doc.file_name,
           content_markdown: doc.content_markdown,
           input_payload: doc.input_payload,
+          artifact_state: doc.artifact_state,
+          artifact_state_updated_at: new Date().toISOString(),
         })
         .eq('id', existingDraft.id);
 
@@ -146,7 +158,15 @@ export async function compileDocsAction(rawWizardData: WizardData): Promise<Comp
 
     const nextVersion = (maxVersionByTemplateId.get(doc.template_id) ?? 0) + 1;
     const { data: insertedDoc, error: insertError } = await supabase.from('generated_docs').insert({
-      ...doc,
+      organization_id: doc.organization_id,
+      template_id: doc.template_id,
+      title: doc.title,
+      file_name: doc.file_name,
+      content_markdown: doc.content_markdown,
+      input_payload: doc.input_payload,
+      artifact_state: doc.artifact_state,
+      artifact_state_updated_at: new Date().toISOString(),
+      status: doc.status,
       version: nextVersion,
     }).select('id').single();
 

@@ -4,7 +4,7 @@ This packet is intended for independent SOC 2 Type I / Trust Services Criteria d
 
 ## What Is Included
 
-- `36` active baseline templates exported from the local TrustScaffold template library.
+- `39` active baseline templates exported from the local TrustScaffold template library.
 - A criterion-level SOC 2 Type I documentation coverage matrix.
 - A category-level coverage matrix for TSC and COSO-oriented review.
 - A reviewer checklist for marking coverage as covered, partially covered, missing, not applicable, or requiring CPA judgment.

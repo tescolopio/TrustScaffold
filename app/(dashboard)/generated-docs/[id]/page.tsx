@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { notFound } from 'next/navigation';
 
 import { approveGeneratedDocAction, archiveGeneratedDocAction, queueSharePointPdfPublicationAction, regenerateDocAction, rejectGeneratedDocAction } from '@/app/(dashboard)/generated-docs/actions';
 import { AlertCallout } from '@/components/ui/alert-callout';
@@ -10,6 +11,15 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { canApproveDocuments, canRejectOrRegenerateDocuments, isAdminRole } from '@/lib/auth/roles';
 import { getDashboardContext } from '@/lib/auth/get-dashboard-context';
+import {
+  deriveDocumentArtifactStates,
+  formatArtifactHash,
+  getArtifactClassLabel,
+  getArtifactDisplayBadgeVariant,
+  getArtifactDisplayLabel,
+  getArtifactRendererLabel,
+  readPersistedDocumentArtifactStates,
+} from '@/lib/documents/document-artifacts';
 import { getGeneratedDocStatusDisplay, getGeneratedDocStatusLabel } from '@/lib/documents/generated-doc-status';
 import { describeExternalControlMapping } from '@/lib/documents/control-mapping-catalog';
 import { parseDocumentFrontmatter } from '@/lib/documents/frontmatter';
@@ -27,6 +37,7 @@ import {
 import { selectFieldClassName } from '@/lib/ui/form-controls';
 import { cn } from '@/lib/utils';
 import { expandCriteriaCodes, getCriterionByCode } from '@/lib/tsc-criteria';
+import { wizardSchema } from '@/lib/wizard/schema';
 
 export default async function GeneratedDocDetailPage({
   params,
@@ -50,13 +61,17 @@ export default async function GeneratedDocDetailPage({
   const supabase = await createSupabaseServerClient();
   const { data: doc, error } = await supabase
     .from('generated_docs')
-    .select('id, title, file_name, content_markdown, status, version, updated_at, approved_at, templates(name, slug, criteria_mapped)')
+    .select('id, title, file_name, content_markdown, status, version, updated_at, approved_at, input_payload, artifact_state, templates(name, slug, criteria_mapped)')
     .eq('organization_id', context.organization.id)
     .eq('id', id)
-    .single();
+    .maybeSingle();
 
-  if (error || !doc) {
+  if (error) {
     throw new Error(error?.message ?? 'Generated document not found');
+  }
+
+  if (!doc) {
+    notFound();
   }
 
   const { data: latestApprovedRevision } = await supabase
@@ -66,6 +81,12 @@ export default async function GeneratedDocDetailPage({
     .eq('source', 'approved')
     .order('created_at', { ascending: false })
     .limit(1)
+    .maybeSingle();
+
+  const { data: currentDraft } = await supabase
+    .from('wizard_drafts')
+    .select('payload')
+    .eq('organization_id', context.organization.id)
     .maybeSingle();
 
   const sectionDiff = latestApprovedRevision
@@ -98,6 +119,16 @@ export default async function GeneratedDocDetailPage({
     .maybeSingle();
 
   const templateRelation = Array.isArray(doc.templates) ? doc.templates[0] : doc.templates;
+  const parsedCurrentDraft = currentDraft?.payload ? wizardSchema.safeParse(currentDraft.payload) : null;
+  const persistedArtifactStates = readPersistedDocumentArtifactStates(doc.artifact_state);
+  const artifactStates = persistedArtifactStates.length > 0
+    ? persistedArtifactStates
+    : deriveDocumentArtifactStates({
+        documentSlug: templateRelation?.slug,
+        documentStatus: doc.status,
+        sourcePayload: doc.input_payload,
+        currentDraftPayload: parsedCurrentDraft?.success ? parsedCurrentDraft.data : null,
+      });
   const frontmatter = parseDocumentFrontmatter(doc.content_markdown);
   const templateCriteriaMapped = Array.isArray(templateRelation?.criteria_mapped)
     ? templateRelation.criteria_mapped.filter((code): code is string => typeof code === 'string' && code.length > 0)
@@ -282,6 +313,39 @@ export default async function GeneratedDocDetailPage({
 
           {successMessage ? <AlertCallout variant="success">{successMessage}</AlertCallout> : null}
           {errorMessage ? <AlertCallout variant="danger">{errorMessage}</AlertCallout> : null}
+
+          {artifactStates.length > 0 ? (
+            <div className={cn(metricPanelSurfaceClassName, 'space-y-4')}>
+              <div>
+                <p className="text-sm font-semibold text-foreground">Registered artifact state</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Stored review grade is kept separate from display grade. A stale dependency snapshot downgrades the display state until the document is regenerated, but it does not erase prior review history.
+                </p>
+              </div>
+              <div className="grid gap-3 lg:grid-cols-2">
+                {artifactStates.map((artifact) => (
+                  <div key={artifact.id} className={cn(mutedInsetSurfaceClassName, 'border border-border bg-background px-4 py-3')}>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-semibold text-foreground">{artifact.name}</p>
+                      <Badge variant={getArtifactDisplayBadgeVariant(artifact.displayGrade)}>{getArtifactDisplayLabel(artifact.displayGrade)}</Badge>
+                      <Badge variant="outline">{getArtifactClassLabel(artifact.class)}</Badge>
+                      <Badge variant="secondary">{getArtifactRendererLabel(artifact.renderer)}</Badge>
+                    </div>
+                    <p className="mt-2 text-xs text-muted-foreground">{artifact.readinessHint}</p>
+                    <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+                      <p>Stored review grade: <span className="font-medium text-foreground">{artifact.storedGrade === 'reviewed' ? 'Reviewed' : 'Draft'}</span></p>
+                      <p>Fidelity gate: <span className="font-medium text-foreground">{artifact.fidelityEligible ? 'Eligible' : 'Missing inputs'}</span></p>
+                      <p>Source snapshot: <span className="font-mono text-foreground">{formatArtifactHash(artifact.sourceSnapshotHash)}</span></p>
+                      <p>Current snapshot: <span className="font-mono text-foreground">{formatArtifactHash(artifact.currentSnapshotHash)}</span></p>
+                    </div>
+                    <p className="mt-3 text-xs text-muted-foreground">
+                      Dependency scope: {artifact.dependencyPaths.join(', ')}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           {showApprovePanel ? (
             <form action={approveGeneratedDocAction} className={cn(successPanelSurfaceClassName, 'space-y-3 p-3')}>

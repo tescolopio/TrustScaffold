@@ -140,13 +140,13 @@ test('Security-only scope returns templates mapped to CC criteria', async () => 
 
 suite('4.4 Full TSC Scope');
 
-test('All 5 TSC categories cover all 31 templates', async () => {
+test('All 5 TSC categories cover all 39 templates', async () => {
   const svc = serviceClient();
   const { data, count } = await svc
     .from('templates')
     .select('id', { count: 'exact' });
 
-  assertEqual(count, 31, 'total template count');
+  assertEqual(count, 39, 'total template count');
 });
 
 // ── 4.6 DC 200 System Description Completeness ──────────────────────────────

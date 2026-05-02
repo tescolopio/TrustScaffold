@@ -13,6 +13,7 @@ export interface DocumentGenerationRule {
   generationRequirement: string;
   wizardAnswerTrigger: string;
   description: string;
+  artifacts?: string[];
 }
 
 type DocumentRuleSelections = WizardData['tscSelections'] | WizardData;
@@ -454,6 +455,45 @@ export const documentGenerationRules: DocumentGenerationRule[] = [
     wizardAnswerTrigger: 'tscSelections.security is always true; the letter uses the same generated-document set and prioritized gap-analysis rows already derived from the wizard trace.',
     description: 'Provides a customer-facing bridge or comfort letter summarizing current scope, available documentation, active improvement priorities, and the next management review date.',
   },
+    {
+      slug: 'nist-csf-profile',
+      name: 'NIST CSF Profile',
+      tsc: 'Universal',
+      criteriaMapped: ['COMMON', 'CC1', 'CC3', 'CC6', 'CC7', 'CC8', 'CC9', 'A1', 'C1', 'PI1', 'ISO27001', 'HIPAA', 'PCI'],
+      criteriaHint: 'Cross-framework profile spanning governance, identify, protect, detect, respond, and recover themes',
+      outputFilenamePattern: '36-nist-csf-profile.md',
+      scope: 'common',
+      generationRequirement: 'Generate for every completed wizard because many customers and internal reviewers want the current control posture translated into a NIST CSF-style profile without requiring additional questionnaire branches.',
+      wizardAnswerTrigger: 'tscSelections.security is always true. The profile is derived from existing wizard answers, selected criteria, security-assessment fields, and generated-document coverage.',
+      description: 'NIST Cybersecurity Framework profile translating the current wizard posture into Govern, Identify, Protect, Detect, Respond, and Recover functions with evidence and priority actions.',
+      artifacts: ['nist-csf-profile'],
+    },
+    {
+      slug: 'control-framework-crosswalk',
+      name: 'Control-to-Framework Crosswalk',
+      tsc: 'Universal',
+      criteriaMapped: ['COMMON', 'CC1', 'CC2', 'CC3', 'CC4', 'CC5', 'CC6', 'CC7', 'CC8', 'CC9', 'A1', 'C1', 'PI1', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8', 'ISO27001', 'HIPAA', 'PCI', 'SOX'],
+      criteriaHint: 'Cross-framework mapping matrix for generated documents and shared-control themes',
+      outputFilenamePattern: '37-control-framework-crosswalk.md',
+      scope: 'common',
+      generationRequirement: 'Generate for every completed wizard because shared-control questions often require a concise crosswalk that shows how generated artifacts support multiple frameworks at once.',
+      wizardAnswerTrigger: 'tscSelections.security is always true. Crosswalk rows are derived from the selected document rules plus the active framework profile.',
+      description: 'Matrix showing how each generated artifact supports SOC 2 and adjacent frameworks such as NIST CSF, ISO 27001, HIPAA, PCI-DSS, and SOX / ITGC.',
+      artifacts: ['control-framework-crosswalk'],
+    },
+    {
+      slug: 'network-and-data-flow-diagrams',
+      name: 'Network and Data Flow Diagrams',
+      tsc: 'Universal',
+      criteriaMapped: ['COMMON', 'CC2', 'CC6', 'CC7', 'CC9', 'A1', 'C1', 'HIPAA', 'PCI'],
+      criteriaHint: 'Draft network topology and data-flow evidence for system-boundary review',
+      outputFilenamePattern: '38-network-and-data-flow-diagrams.md',
+      scope: 'common',
+      generationRequirement: 'Generate for every completed wizard because architecture diagrams are high-value audit and customer artifacts even when the wizard indicates the diagrams still need formal validation.',
+      wizardAnswerTrigger: 'tscSelections.security is always true. Existing diagram-readiness answers tailor the caveats and review notes but do not suppress generation.',
+      description: 'Mermaid-based draft network and data-flow diagrams derived from the current wizard system boundary, infrastructure, vendor, and operational answers.',
+      artifacts: ['network-topology-diagram', 'data-flow-diagram'],
+    },
 ];
 
 export function isDocumentRuleSelected(rule: DocumentGenerationRule, selections: DocumentRuleSelections) {

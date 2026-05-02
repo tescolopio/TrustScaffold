@@ -24,7 +24,7 @@ import {
   type WizardData,
   selectedCriteriaCodes,
 } from '@/lib/wizard/schema';
-import { getSelectedDocumentGenerationRules } from '@/lib/wizard/document-generation-rules';
+import { getSelectedDocumentGenerationRules, type DocumentGenerationRule } from '@/lib/wizard/document-generation-rules';
 import { getWizardDecisionTrace } from '@/lib/wizard/rule-matrix';
 
 function getOptionLabel(options: readonly { value: string; label: string }[], value: string) {
@@ -322,6 +322,333 @@ function getTargetStateDescription(item: {
   return item.kind === 'deep-dive'
     ? 'Management has documented the actual operating approach and retained supporting evidence for external review.'
     : 'Management can show the control objective is documented, implemented, and supported by current evidence.';
+}
+
+function summarizeCapabilityList(capabilities: string[], fallback: string) {
+  return capabilities.length > 0 ? capabilities.join('; ') : fallback;
+}
+
+function summarizeFunctionStatus(signals: boolean[]) {
+  const implementedCount = signals.filter(Boolean).length;
+
+  if (implementedCount >= Math.max(signals.length - 1, 1)) return 'Established';
+  if (implementedCount >= Math.ceil(signals.length / 2)) return 'Partially established';
+  return 'Needs definition';
+}
+
+function getNistFunctionsForCriterion(criterion: string) {
+  const family = getCriterionFamily(criterion);
+
+  const mappings: Record<string, string[]> = {
+    COMMON: ['GV'],
+    CC1: ['GV'],
+    CC2: ['GV'],
+    CC3: ['GV', 'ID'],
+    CC4: ['GV'],
+    CC5: ['GV'],
+    CC6: ['PR'],
+    CC7: ['DE', 'RS'],
+    CC8: ['PR'],
+    CC9: ['ID', 'RC'],
+    A1: ['RC'],
+    C1: ['PR'],
+    PI1: ['PR', 'DE'],
+    HIPAA: ['GV', 'PR', 'DE', 'RS'],
+    PCI: ['GV', 'PR', 'DE'],
+    ISO27001: ['GV', 'ID', 'PR', 'DE', 'RS', 'RC'],
+    SOX: ['GV', 'PR'],
+    GDPR: ['GV', 'PR'],
+    CCPA: ['GV', 'PR'],
+  };
+
+  if (/^P[1-8]$/.test(family)) return ['GV', 'PR'];
+
+  return mappings[family] ?? ['GV'];
+}
+
+function getNistCoverageLabel(criteriaMapped: string[]) {
+  const functions = Array.from(new Set(criteriaMapped.flatMap((criterion) => getNistFunctionsForCriterion(criterion))));
+
+  return functions.length > 0 ? functions.join(', ') : 'GV';
+}
+
+function getSoc2CoverageLabel(criteriaMapped: string[]) {
+  const soc2Codes = criteriaMapped.filter((criterion) => /^(COMMON|CC\d|A1|C1|PI1|P\d)$/i.test(criterion));
+
+  return soc2Codes.length > 0 ? soc2Codes.join(', ') : 'Shared readiness support';
+}
+
+function getFrameworkCoverageLabel({
+  frameworkEnabled,
+  direct,
+  shared,
+  directLabel,
+  sharedLabel,
+}: {
+  frameworkEnabled: boolean;
+  direct: boolean;
+  shared: boolean;
+  directLabel: string;
+  sharedLabel: string;
+}) {
+  if (!frameworkEnabled) return 'Not currently in active scope';
+  if (direct) return directLabel;
+  if (shared) return sharedLabel;
+  return 'Not primary';
+}
+
+function buildCrosswalkRow(rule: DocumentGenerationRule, data: WizardData) {
+  const criteria = rule.criteriaMapped;
+  const sharedSecurityControl = criteria.some((criterion) => /^(COMMON|CC\d|A1|C1|PI1|P\d)$/i.test(criterion));
+  const highValueOpsControl = criteria.some((criterion) => /^(CC6|CC7|CC8|CC9|A1|C1)$/i.test(criterion));
+
+  return {
+    document_name: rule.name,
+    document_slug: rule.slug,
+    document_scope: rule.tsc,
+    soc2_coverage: getSoc2CoverageLabel(criteria),
+    nist_csf_coverage: getNistCoverageLabel(criteria),
+    iso27001_coverage: getFrameworkCoverageLabel({
+      frameworkEnabled: data.governance.iso27001.targeted,
+      direct: criteria.includes('ISO27001'),
+      shared: sharedSecurityControl,
+      directLabel: 'Direct ISO 27001 readiness artifact',
+      sharedLabel: 'Shared Annex A support',
+    }),
+    hipaa_coverage: getFrameworkCoverageLabel({
+      frameworkEnabled: data.scope.containsPhi,
+      direct: criteria.includes('HIPAA'),
+      shared: highValueOpsControl,
+      directLabel: 'Direct HIPAA safeguard artifact',
+      sharedLabel: 'Shared HIPAA safeguard support',
+    }),
+    pci_coverage: getFrameworkCoverageLabel({
+      frameworkEnabled: data.scope.hasCardholderDataEnvironment,
+      direct: criteria.includes('PCI'),
+      shared: highValueOpsControl,
+      directLabel: 'Direct PCI-DSS artifact',
+      sharedLabel: 'Shared PCI control support',
+    }),
+    sox_coverage: getFrameworkCoverageLabel({
+      frameworkEnabled: data.company.soxApplicability !== 'none',
+      direct: criteria.includes('SOX'),
+      shared: criteria.some((criterion) => /^(COMMON|CC2|CC4|CC6|CC8)$/i.test(criterion)),
+      directLabel: 'Direct SOX / ITGC artifact',
+      sharedLabel: 'Shared ITGC support',
+    }),
+    mapping_basis: rule.description,
+  };
+}
+
+function escapeMermaidLabel(value: string) {
+  return value.replace(/"/g, '\\"').replace(/\n/g, ' ').trim();
+}
+
+function formatCloudProviderName(provider: string) {
+  const labels: Record<string, string> = {
+    aws: 'AWS',
+    azure: 'Azure',
+    gcp: 'GCP',
+  };
+
+  return labels[provider.toLowerCase()] ?? provider;
+}
+
+function getNetworkDataBoundaryLabel(data: WizardData) {
+  if (data.scope.hasCardholderDataEnvironment) {
+    return 'Cardholder data environment';
+  }
+
+  if (data.scope.containsPhi) {
+    return 'PHI handling zone';
+  }
+
+  return 'Protected data zone';
+}
+
+function getDataFlowBoundaryLabel(data: WizardData) {
+  if (data.scope.hasCardholderDataEnvironment) {
+    return 'Cardholder data stores';
+  }
+
+  if (data.scope.containsPhi) {
+    return 'Regulated data stores';
+  }
+
+  return 'Protected data stores';
+}
+
+function buildNetworkTopologyMermaid(data: WizardData, cloudProviders: string[], populatedSubservices: WizardData['subservices']) {
+  const edgeLabel = data.securityTooling.hasWaf ? 'WAF / Edge protection' : 'Public application edge';
+  const systemLabel = data.scope.systemName.trim() || 'In-scope system';
+  const platformProviders = cloudProviders.map((provider) => formatCloudProviderName(provider));
+  const platformLabel = platformProviders.length > 0 ? `${platformProviders.join(' + ')} workload tier` : 'Application workload tier';
+  const monitoringLabel = data.securityTooling.monitoringTool || data.securityTooling.siemTool || 'Monitoring and logging';
+  const dataBoundaryLabel = getNetworkDataBoundaryLabel(data);
+  const lines = [
+    'flowchart LR',
+    '  subgraph users["Actors"]',
+    '    internet["Internet / customer traffic"]',
+    '    workforce["Workforce and administrators"]',
+    '  end',
+    '  subgraph edge_boundary["Edge and identity boundary"]',
+    `    edge["${escapeMermaidLabel(edgeLabel)}"]`,
+    `    idp["Identity provider: ${escapeMermaidLabel(data.infrastructure.idpProvider || 'Managed identity service')}"]`,
+    '  end',
+    `  subgraph app_boundary["${escapeMermaidLabel(systemLabel)}"]`,
+    `    app["${escapeMermaidLabel(systemLabel)}"]`,
+    `    platform["${escapeMermaidLabel(platformLabel)}"]`,
+    '  end',
+    `  subgraph data_boundary["${escapeMermaidLabel(dataBoundaryLabel)}"]`,
+    '    datastore["Primary application data stores"]',
+    '  end',
+    '  subgraph ops_boundary["Security and operations"]',
+    `    monitor["${escapeMermaidLabel(monitoringLabel)}"]`,
+    '  end',
+    '  internet --> edge',
+    '  workforce --> idp',
+    '  idp --> app',
+    '  edge --> app',
+    '  app --> platform',
+    '  platform --> datastore',
+    '  platform --> monitor',
+  ];
+
+  if (data.company.hasPublicWebsite) {
+    lines.push('  website["Public website / marketing surface"]');
+    lines.push('  internet --> website');
+    lines.push('  website --> edge');
+  }
+
+  if (data.operations.ticketingSystem) {
+    lines.push(`  ticketing["Ticketing / workflow: ${escapeMermaidLabel(data.operations.ticketingSystem)}"]`);
+    lines.push('  platform --> ticketing');
+  }
+
+  if (data.operations.versionControlSystem || data.operations.vcsProvider) {
+    lines.push(`  sdlc["Source control / delivery: ${escapeMermaidLabel(data.operations.versionControlSystem || data.operations.vcsProvider)}"]`);
+    lines.push('  platform --> sdlc');
+  }
+
+  if (data.infrastructure.usesAvailabilityZones || data.infrastructure.hasHardwareFailover || data.tscSelections.availability) {
+    lines.push('  backup["Backups / recovery copies"]');
+    lines.push('  datastore --> backup');
+  }
+
+  if (populatedSubservices.length > 0) {
+    lines.push('  subgraph vendor_boundary["Subservice organizations"]');
+  }
+
+  populatedSubservices.slice(0, 4).forEach((subservice, index) => {
+    const nodeId = `vendor${index + 1}`;
+    const label = subservice.name.trim() || `Subservice ${index + 1}`;
+    lines.push(`    ${nodeId}["Subservice: ${escapeMermaidLabel(label)}"]`);
+  });
+
+  if (populatedSubservices.length > 0) {
+    lines.push('  end');
+    populatedSubservices.slice(0, 4).forEach((_, index) => {
+      const nodeId = `vendor${index + 1}`;
+      lines.push(`  platform --> ${nodeId}`);
+    });
+  }
+
+  lines.push('  classDef actor fill:#f4f1e8,stroke:#8b7b5f,color:#352b1e,stroke-width:1.5px;');
+  lines.push('  classDef boundary fill:#eef4ff,stroke:#4361a8,color:#14213d,stroke-width:1.5px;');
+  lines.push('  classDef data fill:#edf7f0,stroke:#2f7d57,color:#143224,stroke-width:1.5px;');
+  lines.push('  classDef ops fill:#fff4e8,stroke:#b96a12,color:#4a2a00,stroke-width:1.5px;');
+  lines.push('  classDef vendor fill:#f7edf8,stroke:#8e4ea8,color:#341644,stroke-width:1.5px;');
+  lines.push('  class internet,workforce actor;');
+  lines.push('  class edge,idp,app,platform boundary;');
+  lines.push('  class datastore,backup data;');
+  lines.push('  class monitor,ticketing,sdlc ops;');
+
+  populatedSubservices.slice(0, 4).forEach((_, index) => {
+    const nodeId = `vendor${index + 1}`;
+    lines.push(`  class ${nodeId} vendor;`);
+  });
+
+  return lines.join('\n');
+}
+
+function buildDataFlowMermaid(data: WizardData, populatedSubservices: WizardData['subservices']) {
+  const dataScopeLabel = data.scope.containsPhi
+    ? 'Regulated data including PHI'
+    : data.scope.hasCardholderDataEnvironment
+      ? 'Cardholder and payment-related data'
+      : data.scope.dataTypesHandled.length > 0
+        ? formatList(data.scope.dataTypesHandled)
+        : 'Operational and customer data';
+        const dataBoundaryLabel = getDataFlowBoundaryLabel(data);
+  const lines = [
+    'flowchart TD',
+    '  subgraph actor_boundary["Actors and intake"]',
+    '    actors["Customers, workforce, and approved integrations"]',
+    '  end',
+    `  subgraph system_boundary["${escapeMermaidLabel(data.scope.systemName)}"]`,
+    `    system["${escapeMermaidLabel(data.scope.systemName)}"]`,
+    '  end',
+    `  subgraph data_boundary["${escapeMermaidLabel(dataBoundaryLabel)}"]`,
+    `    datastore["Primary stores for ${escapeMermaidLabel(dataScopeLabel)}"]`,
+    '  end',
+    '  subgraph ops_boundary["Operational records"]',
+    '    logs["Operational logs and monitoring"]',
+    '  end',
+    '  actors --> system',
+    '  system --> datastore',
+    '  system --> logs',
+  ];
+
+  if (data.operations.ticketingSystem) {
+    lines.push(`  ticketing["Incident and workflow records: ${escapeMermaidLabel(data.operations.ticketingSystem)}"]`);
+    lines.push('  logs --> ticketing');
+  }
+
+  if (data.operations.hrisProvider) {
+    lines.push(`  hris["HRIS lifecycle source: ${escapeMermaidLabel(data.operations.hrisProvider)}"]`);
+    lines.push('  hris --> system');
+  }
+
+  if (data.infrastructure.idpProvider) {
+    lines.push(`  idp["Identity provider: ${escapeMermaidLabel(data.infrastructure.idpProvider)}"]`);
+    lines.push('  idp --> system');
+  }
+
+  if (populatedSubservices.length > 0) {
+    lines.push('  subgraph external_boundary["Approved downstream processors"]');
+  }
+
+  populatedSubservices.slice(0, 4).forEach((subservice, index) => {
+    const nodeId = `processor${index + 1}`;
+    const label = subservice.name.trim() || `Processor ${index + 1}`;
+    const dataShared = subservice.dataShared?.trim() || 'Approved service data';
+    lines.push(`    ${nodeId}["${escapeMermaidLabel(label)}\\n${escapeMermaidLabel(dataShared)}"]`);
+  });
+
+  if (populatedSubservices.length > 0) {
+    lines.push('  end');
+    populatedSubservices.slice(0, 4).forEach((_, index) => {
+      const nodeId = `processor${index + 1}`;
+      lines.push(`  system --> ${nodeId}`);
+    });
+  }
+
+  lines.push('  classDef actor fill:#f4f1e8,stroke:#8b7b5f,color:#352b1e,stroke-width:1.5px;');
+  lines.push('  classDef boundary fill:#eef4ff,stroke:#4361a8,color:#14213d,stroke-width:1.5px;');
+  lines.push('  classDef data fill:#edf7f0,stroke:#2f7d57,color:#143224,stroke-width:1.5px;');
+  lines.push('  classDef ops fill:#fff4e8,stroke:#b96a12,color:#4a2a00,stroke-width:1.5px;');
+  lines.push('  classDef vendor fill:#f7edf8,stroke:#8e4ea8,color:#341644,stroke-width:1.5px;');
+  lines.push('  class actors,hris actor;');
+  lines.push('  class system,idp boundary;');
+  lines.push('  class datastore data;');
+  lines.push('  class logs,ticketing ops;');
+
+  populatedSubservices.slice(0, 4).forEach((_, index) => {
+    const nodeId = `processor${index + 1}`;
+    lines.push(`  class ${nodeId} vendor;`);
+  });
+
+  return lines.join('\n');
 }
 
 function getActiveCustomerFrameworks(data: WizardData) {
@@ -636,6 +963,195 @@ export function buildTemplatePayload(data: WizardData, options?: BuildTemplatePa
       ...row,
       priority_rank: index + 1,
     }));
+  const nistProfileRows = [
+    {
+      function_id: 'GV',
+      function_name: 'Govern',
+      mapped_criteria: 'COMMON, CC1, CC2, CC3, CC4',
+      status: summarizeFunctionStatus([
+        data.governance.hasBoardOrAdvisory,
+        data.governance.hasDedicatedSecurityOfficer,
+        data.operations.hasRiskRegister,
+        data.governance.hasInternalAuditProgram,
+      ]),
+      current_profile: summarizeCapabilityList([
+        ...(data.governance.hasBoardOrAdvisory ? [`Oversight body cadence: ${data.governance.boardMeetingFrequency || 'defined review cadence'}`] : []),
+        ...(data.governance.hasDedicatedSecurityOfficer ? [`Security owner designated as ${data.governance.securityOfficerTitle || 'Security Lead'}`] : []),
+        ...(data.operations.hasRiskRegister ? ['Formal risk register and review cadence are captured in the operating model'] : []),
+        ...(data.governance.hasInternalAuditProgram ? [`Internal audit and monitoring cadence: ${data.governance.internalAuditFrequency || 'defined'}`] : []),
+      ], 'Governance, ownership, and risk-management evidence are still maturing in the current wizard draft.'),
+      target_profile: 'Management assigns ownership, reviews risks on a defined cadence, tracks deficiencies, and can produce governance records for internal and external stakeholders.',
+      representative_evidence: 'Information Security Policy; Risk Management Policy; Internal Audit and Monitoring Policy; management review records.',
+      priority_actions: pointsOfFocusGapRows
+        .filter((row) => /^(COMMON|CC1|CC2|CC3|CC4)/i.test(row.primary_criterion))
+        .slice(0, 3)
+        .map((row) => row.focus_area)
+        .join('; ') || 'Confirm governance ownership, documented review cadence, and retained management evidence.',
+      related_documents: generatedDocumentRows
+        .filter((row) => ['information-security-policy', 'risk-management-policy', 'internal-audit-monitoring-policy', 'management-assertion-letter'].includes(row.slug))
+        .map((row) => row.name)
+        .join('; '),
+    },
+    {
+      function_id: 'ID',
+      function_name: 'Identify',
+      mapped_criteria: 'CC3, CC9, A1',
+      status: summarizeFunctionStatus([
+        data.securityAssessment.documentReview.hasAssetInventory,
+        data.securityAssessment.documentReview.hasSecurityPolicyInventory,
+        data.operations.hasRiskRegister,
+        hasSupplierFootprint,
+      ]),
+      current_profile: summarizeCapabilityList([
+        ...(data.securityAssessment.documentReview.hasAssetInventory ? ['Asset inventory exists for the current system boundary'] : []),
+        ...(data.securityAssessment.documentReview.hasSecurityPolicyInventory ? ['Policy inventory is available for documentation review'] : []),
+        ...(data.operations.hasRiskRegister ? ['Risks and treatment decisions are tracked in a formal register'] : []),
+        ...(hasSupplierFootprint ? [`${populatedSubservices.length} subservice organization(s) are currently in scope`] : []),
+      ], 'Asset, dependency, and system-boundary identification evidence is still limited in the current wizard draft.'),
+      target_profile: 'Assets, vendors, system boundaries, and resilience dependencies are inventoried with accountable owners and periodic reassessment.',
+      representative_evidence: 'System Description; Vendor Management Policy; Complementary Subservice Organization Controls Register; asset and risk inventories.',
+      priority_actions: pointsOfFocusGapRows
+        .filter((row) => /^(CC3|CC9|A1)/i.test(row.primary_criterion))
+        .slice(0, 3)
+        .map((row) => row.focus_area)
+        .join('; ') || 'Confirm assets, vendors, and resilience dependencies are inventoried and reviewed.',
+      related_documents: generatedDocumentRows
+        .filter((row) => ['system-description', 'vendor-management-policy', 'complementary-subservice-organization-controls-register', 'asset-management-cryptographic-inventory'].includes(row.slug))
+        .map((row) => row.name)
+        .join('; '),
+    },
+    {
+      function_id: 'PR',
+      function_name: 'Protect',
+      mapped_criteria: 'CC6, CC8, C1, PI1',
+      status: summarizeFunctionStatus([
+        data.operations.requiresMfa,
+        Boolean(data.securityTooling.endpointProtectionTool),
+        data.securityTooling.hasMdm,
+        data.operations.requiresPeerReview,
+      ]),
+      current_profile: summarizeCapabilityList([
+        ...(data.operations.requiresMfa ? ['MFA is required for the in-scope operating model'] : []),
+        ...(data.securityTooling.endpointProtectionTool ? [`Endpoint protection in place: ${data.securityTooling.endpointProtectionTool}`] : []),
+        ...(data.securityTooling.hasMdm ? [`Managed device controls in place via ${data.securityTooling.mdmTool || 'MDM tooling'}`] : []),
+        ...(data.operations.requiresPeerReview ? ['Peer review is required before production changes are promoted'] : []),
+      ], 'Preventive access, endpoint, and change-protection controls need further hardening in the current wizard draft.'),
+      target_profile: 'Access, endpoint, encryption, and secure-change controls are consistently enforced across production systems and sensitive workflows.',
+      representative_evidence: 'Access Control Policy; Encryption Policy; Secure SDLC Policy; Change Management Policy; endpoint-management records.',
+      priority_actions: pointsOfFocusGapRows
+        .filter((row) => /^(CC6|CC8|C1|PI1)/i.test(row.primary_criterion))
+        .slice(0, 3)
+        .map((row) => row.focus_area)
+        .join('; ') || 'Confirm access, encryption, secure coding, and production-change guardrails are operating and evidenced.',
+      related_documents: generatedDocumentRows
+        .filter((row) => ['access-control-on-offboarding-policy', 'encryption-policy', 'secure-sdlc-policy', 'change-management-policy', 'data-classification-handling-policy'].includes(row.slug))
+        .map((row) => row.name)
+        .join('; '),
+    },
+    {
+      function_id: 'DE',
+      function_name: 'Detect',
+      mapped_criteria: 'CC7, PI1',
+      status: summarizeFunctionStatus([
+        data.securityAssessment.logReview.hasCentralizedLogging,
+        data.securityAssessment.logReview.logsCoverAuthentication,
+        data.securityAssessment.logReview.hasAutomatedLogAnalysis || Boolean(data.securityTooling.siemTool),
+        Boolean(data.securityTooling.monitoringTool),
+      ]),
+      current_profile: summarizeCapabilityList([
+        ...(data.securityAssessment.logReview.hasCentralizedLogging ? ['Centralized logging is represented in the current review profile'] : []),
+        ...(data.securityAssessment.logReview.logsCoverAuthentication ? ['Authentication activity is within current log coverage'] : []),
+        ...(data.securityAssessment.logReview.hasAutomatedLogAnalysis || data.securityTooling.siemTool ? [`Automated log analysis or SIEM tooling is available${data.securityTooling.siemTool ? ` via ${data.securityTooling.siemTool}` : ''}`] : []),
+        ...(data.securityTooling.monitoringTool ? [`Monitoring platform in use: ${data.securityTooling.monitoringTool}`] : []),
+      ], 'Detective monitoring coverage is still light in the current wizard draft.'),
+      target_profile: 'Logs, alerts, and anomaly-detection coverage identify authentication, system, and production events quickly enough for triage and escalation.',
+      representative_evidence: 'SIEM or logging exports; monitoring dashboards; alert coverage matrix; Evidence Checklist.',
+      priority_actions: pointsOfFocusGapRows
+        .filter((row) => /^(CC7|PI1)/i.test(row.primary_criterion))
+        .slice(0, 3)
+        .map((row) => row.focus_area)
+        .join('; ') || 'Confirm log coverage, monitoring, and alert triage are defined and retained as evidence.',
+      related_documents: generatedDocumentRows
+        .filter((row) => ['evidence-checklist', 'incident-response-plan', 'internal-audit-monitoring-policy'].includes(row.slug))
+        .map((row) => row.name)
+        .join('; '),
+    },
+    {
+      function_id: 'RS',
+      function_name: 'Respond',
+      mapped_criteria: 'CC7',
+      status: summarizeFunctionStatus([
+        Boolean(data.operations.incidentResponse.incidentResponseLead),
+        data.operations.incidentResponse.incidentTypesWithPlaybooks.length > 0,
+        data.operations.incidentResponse.hasIncidentRetainer,
+        Boolean(data.operations.incidentResponse.incidentEscalationPath),
+      ]),
+      current_profile: summarizeCapabilityList([
+        ...(data.operations.incidentResponse.incidentResponseLead ? [`Incident-response lead assigned: ${data.operations.incidentResponse.incidentResponseLead}`] : []),
+        ...(data.operations.incidentResponse.incidentTypesWithPlaybooks.length > 0 ? [`Playbooks defined for ${formatList(incidentPlaybookLabels)}`] : []),
+        ...(data.operations.incidentResponse.hasIncidentRetainer ? [`External retainer available: ${data.operations.incidentResponse.irRetainerFirm || 'named responder'}`] : []),
+        ...(data.operations.incidentResponse.incidentEscalationPath ? ['Escalation path has been captured in the operating model'] : []),
+      ], 'Incident-response ownership, playbooks, and escalation evidence are still maturing in the current wizard draft.'),
+      target_profile: 'Incident triage, escalation, communications, and external support are documented and exercised for the scenarios most relevant to the in-scope system.',
+      representative_evidence: 'Incident Response Plan; playbooks; incident tickets; post-incident review records; retainer documentation.',
+      priority_actions: pointsOfFocusGapRows
+        .filter((row) => /^CC7/i.test(row.primary_criterion))
+        .slice(0, 3)
+        .map((row) => row.focus_area)
+        .join('; ') || 'Confirm incident roles, playbooks, escalation, and communications evidence are current.',
+      related_documents: generatedDocumentRows
+        .filter((row) => ['incident-response-plan', 'management-assertion-letter', 'bridge-letter-comfort-letter'].includes(row.slug))
+        .map((row) => row.name)
+        .join('; '),
+    },
+    {
+      function_id: 'RC',
+      function_name: 'Recover',
+      mapped_criteria: 'CC9, A1',
+      status: summarizeFunctionStatus([
+        data.tscSelections.availability,
+        data.infrastructure.usesAvailabilityZones,
+        data.infrastructure.hasHardwareFailover,
+        data.securityTooling.hasAutoscaling,
+      ]),
+      current_profile: summarizeCapabilityList([
+        ...(data.tscSelections.availability ? ['Availability commitments are selected in the current trust-service profile'] : []),
+        ...(data.infrastructure.usesAvailabilityZones ? ['Multi-zone or segmented recovery topology is represented'] : []),
+        ...(data.infrastructure.hasHardwareFailover ? ['Hardware or environment failover is reported in scope'] : []),
+        ...(data.securityTooling.hasAutoscaling ? ['Autoscaling or elastic recovery support is available'] : []),
+      ], 'Recovery architecture and resilience evidence need further confirmation in the current wizard draft.'),
+      target_profile: 'Recovery objectives, backup paths, failover assumptions, and customer-impact communications are documented and can be validated through periodic review.',
+      representative_evidence: 'Business Continuity and Disaster Recovery Policy; Backup and Recovery Policy; restore-test evidence; customer communications plan.',
+      priority_actions: pointsOfFocusGapRows
+        .filter((row) => /^(CC9|A1)/i.test(row.primary_criterion))
+        .slice(0, 3)
+        .map((row) => row.focus_area)
+        .join('; ') || 'Confirm continuity assumptions, backup evidence, and resilience dependencies are documented and reviewed.',
+      related_documents: generatedDocumentRows
+        .filter((row) => ['business-continuity-dr-plan', 'backup-recovery-policy', 'bridge-letter-comfort-letter'].includes(row.slug))
+        .map((row) => row.name)
+        .join('; '),
+    },
+  ];
+  const crosswalkRows = selectedDocumentRules.map((rule) => buildCrosswalkRow(rule, data));
+  const networkDiagramStatus = data.securityAssessment.documentReview.hasNetworkDiagrams
+    ? 'Existing network diagrams are reported by the wizard and should be reconciled against this generated draft.'
+    : 'The wizard indicates a formal network diagram is still missing; this Mermaid draft is a starting point for review.';
+  const dataFlowDiagramStatus = data.securityAssessment.documentReview.hasDataFlowDiagrams
+    ? 'Existing data-flow diagrams are reported by the wizard and should be reconciled against this generated draft.'
+    : 'The wizard indicates a formal data-flow diagram is still missing; this Mermaid draft is a starting point for review.';
+  const networkDiagramMermaid = buildNetworkTopologyMermaid(data, cloudProviders, populatedSubservices);
+  const dataFlowDiagramMermaid = buildDataFlowMermaid(data, populatedSubservices);
+  const networkDiagramAssumptions = [
+    'Draft generated from wizard answers; confirm exact services, segments, and trust boundaries before customer or auditor distribution.',
+    data.securityTooling.hasWaf ? 'Edge protection includes WAF assumptions from the current security-tooling profile.' : 'Edge protection should be reviewed to confirm whether WAF or equivalent controls are in place.',
+    populatedSubservices.length > 0 ? 'Named subservice organizations are shown as external dependencies and should be reconciled with the vendor inventory.' : 'No material subservice organizations are currently listed in the wizard draft.',
+  ];
+  const dataFlowDiagramAssumptions = [
+    'Draft generated from wizard answers; verify data classifications, flows, and system boundaries before relying on the diagram as evidence.',
+    data.scope.containsPhi ? 'PHI handling is in scope and downstream disclosures should be confirmed against BAAs and approved workflows.' : data.scope.hasCardholderDataEnvironment ? 'Payment-data handling is in scope and segmentation assumptions should be validated against the CDE design.' : 'The current flow is based on the general data types selected in the wizard profile.',
+    data.operations.ticketingSystem ? `Operational exception and incident records are assumed to be tracked in ${data.operations.ticketingSystem}.` : 'Add the incident and exception-tracking system once it is finalized.',
+  ];
   const managementAssertionCoverageStatement = selectedTrustServiceCategories.length > 1
     ? `${data.company.name} prepared documentation covering ${formatList(selectedTrustServiceCategories)} based on the current wizard profile and supporting operating assumptions.`
     : `${data.company.name} prepared documentation covering ${selectedTrustServiceCategories[0] ?? 'Security'} based on the current wizard profile and supporting operating assumptions.`;
@@ -1060,6 +1576,18 @@ export function buildTemplatePayload(data: WizardData, options?: BuildTemplatePa
     selected_trust_service_categories_text: formatList(selectedTrustServiceCategories),
     generated_document_rows: generatedDocumentRows,
     generated_document_count: generatedDocumentRows.length,
+    nist_csf_profile_rows: nistProfileRows,
+    nist_csf_profile_count: nistProfileRows.length,
+    control_framework_crosswalk_rows: crosswalkRows,
+    control_framework_crosswalk_count: crosswalkRows.length,
+    network_diagram_status: networkDiagramStatus,
+    data_flow_diagram_status: dataFlowDiagramStatus,
+    network_topology_mermaid: networkDiagramMermaid,
+    data_flow_mermaid: dataFlowDiagramMermaid,
+    network_diagram_assumptions: networkDiagramAssumptions,
+    network_diagram_assumption_count: networkDiagramAssumptions.length,
+    data_flow_diagram_assumptions: dataFlowDiagramAssumptions,
+    data_flow_diagram_assumption_count: dataFlowDiagramAssumptions.length,
     management_assertion_focus_areas: managementAssertionFocusAreas,
     management_assertion_focus_area_count: managementAssertionFocusAreas.length,
     management_assertion_coverage_statement: managementAssertionCoverageStatement,

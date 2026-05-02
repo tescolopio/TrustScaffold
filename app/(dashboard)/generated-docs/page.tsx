@@ -14,6 +14,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { EmptyState } from '@/components/ui/empty-state';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { canRejectOrRegenerateDocuments, isAdminRole } from '@/lib/auth/roles';
+import {
+  deriveDocumentArtifactStates,
+  formatArtifactHash,
+  getArtifactDisplayBadgeVariant,
+  getArtifactDisplayLabel,
+  readPersistedDocumentArtifactStates,
+} from '@/lib/documents/document-artifacts';
 import { GENERATED_DOC_SECTIONS, getGeneratedDocStatusDisplay, getGeneratedDocStatusLabel } from '@/lib/documents/generated-doc-status';
 import { getDashboardContext } from '@/lib/auth/get-dashboard-context';
 import { infoPanelSurfaceClassName, interactiveListRowSurfaceClassName, metricPanelSurfaceClassName, nestedPanelSurfaceClassName, warningPanelSurfaceClassName } from '@/lib/ui/card-surfaces';
@@ -53,12 +60,12 @@ export default async function GeneratedDocsPage({
   const [{ data: docs, error }, { data: draft }, { data: integrations, error: integrationsError }] = await Promise.all([
     supabase
       .from('generated_docs')
-      .select('id, title, file_name, status, version, updated_at, content_markdown, committed_to_repo, pr_url, templates(name, slug)')
+      .select('id, title, file_name, status, version, updated_at, content_markdown, committed_to_repo, pr_url, input_payload, artifact_state, templates(name, slug)')
       .eq('organization_id', context.organization.id)
       .order('updated_at', { ascending: false }),
     supabase
       .from('wizard_drafts')
-      .select('updated_at')
+      .select('updated_at, payload')
       .eq('organization_id', context.organization.id)
       .maybeSingle(),
     supabase
@@ -77,6 +84,7 @@ export default async function GeneratedDocsPage({
   }
 
   const draftUpdatedAt = draft?.updated_at ? new Date(draft.updated_at) : null;
+  const currentDraftPayload = draft?.payload ?? null;
   const staleDocs = draftUpdatedAt && docs
     ? docs.filter((doc) => doc.status !== 'archived' && new Date(doc.updated_at) < draftUpdatedAt)
     : [];
@@ -286,6 +294,15 @@ export default async function GeneratedDocsPage({
                   {section.docs.map((doc) => {
                     const templateRelation = Array.isArray(doc.templates) ? doc.templates[0] : doc.templates;
                     const statusDisplay = getGeneratedDocStatusDisplay(doc.status);
+                    const artifactStates = readPersistedDocumentArtifactStates(doc.artifact_state).length > 0
+                      ? readPersistedDocumentArtifactStates(doc.artifact_state)
+                      : deriveDocumentArtifactStates({
+                          documentSlug: templateRelation?.slug,
+                          documentStatus: doc.status,
+                          sourcePayload: doc.input_payload,
+                          currentDraftPayload,
+                        });
+                    const hasStaleArtifacts = artifactStates.some((artifact) => artifact.isStale);
 
                     return (
                       <Card key={doc.id} className={cn('shadow-sm backdrop-blur-0', statusDisplay.cardClassName)}>
@@ -315,6 +332,22 @@ export default async function GeneratedDocsPage({
                               <p className="mt-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
                                 Updated {new Date(doc.updated_at).toLocaleString()} · Template {templateRelation?.name ?? 'Unknown'}
                               </p>
+                              {artifactStates.length > 0 ? (
+                                <div className="mt-3 space-y-2">
+                                  <div className="flex flex-wrap gap-2">
+                                    {artifactStates.map((artifact) => (
+                                      <Badge key={artifact.id} variant={getArtifactDisplayBadgeVariant(artifact.displayGrade)}>
+                                        {artifact.name}: {getArtifactDisplayLabel(artifact.displayGrade)}
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                  <p className="text-xs text-muted-foreground">
+                                    {hasStaleArtifacts
+                                      ? 'Artifact dependency snapshots differ from the current wizard draft.'
+                                      : `Artifact dependency snapshot ${formatArtifactHash(artifactStates[0].sourceSnapshotHash)} matches the current wizard draft.`}
+                                  </p>
+                                </div>
+                              ) : null}
                               {doc.pr_url ? (
                                 <p className="mt-2 text-sm text-muted-foreground">
                                   Pull request: <a className="text-primary underline-offset-4 hover:underline" href={doc.pr_url} target="_blank" rel="noreferrer">{doc.pr_url}</a>

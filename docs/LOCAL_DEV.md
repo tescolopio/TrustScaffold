@@ -59,7 +59,7 @@ Verification command:
 PGPASSWORD=postgres psql 'postgresql://postgres@127.0.0.1:54322/postgres' -c "select count(*) from public.templates;"
 ```
 
-Expected result: `16`
+Expected result: `39`
 
 ## Wire the Next.js App to Local Supabase
 

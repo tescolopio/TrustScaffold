@@ -74,6 +74,9 @@ Use this checklist to review the baseline template set before organization-speci
 | Management Assertion Letter | ☐ Ready ☐ Needs edits ☐ Not needed |  |
 | Points of Focus Gap Analysis | ☐ Ready ☐ Needs edits ☐ Not needed |  |
 | Bridge Letter / Comfort Letter | ☐ Ready ☐ Needs edits ☐ Not needed |  |
+| NIST CSF Profile | ☐ Ready ☐ Needs edits ☐ Not needed |  |
+| Control-to-Framework Crosswalk | ☐ Ready ☐ Needs edits ☐ Not needed |  |
+| Network and Data Flow Diagrams | ☐ Ready ☐ Needs edits ☐ Not needed |  |
 
 ## Cross-Cutting Questions
 

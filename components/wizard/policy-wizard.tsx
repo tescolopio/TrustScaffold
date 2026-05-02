@@ -770,27 +770,48 @@ export function PolicyWizard() {
   const [draftSyncStatus, setDraftSyncStatus] = React.useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [hasLoadedDraftFromServer, setHasLoadedDraftFromServer] = React.useState(false);
   const [maxStepReached, setMaxStepReached] = React.useState(currentStep);
-  const watchedInfrastructure = form.watch('infrastructure.type');
-  const watchedCloudProviders = form.watch('infrastructure.cloudProviders') ?? [];
-  const watchedHostsOwnHardware = form.watch('infrastructure.hostsOwnHardware') ?? false;
+  const watchedInfrastructure = useWatch({ control: form.control, name: 'infrastructure.type' });
+  const watchedCloudProviders = useWatch({ control: form.control, name: 'infrastructure.cloudProviders' }) ?? [];
+  const watchedHostsOwnHardware = useWatch({ control: form.control, name: 'infrastructure.hostsOwnHardware' }) ?? false;
   const watchedSoxApplicability = useWatch({ control: form.control, name: 'company.soxApplicability' });
+  const watchedOrgAge = useWatch({ control: form.control, name: 'company.orgAge' });
+  const watchedComplianceMaturity = useWatch({ control: form.control, name: 'company.complianceMaturity' });
+  const watchedOrganizationRelationship = useWatch({ control: form.control, name: 'company.organizationRelationship' });
+  const watchedHasPublicWebsite = useWatch({ control: form.control, name: 'company.hasPublicWebsite' }) ?? false;
+  const watchedPrimaryContactEmail = useWatch({ control: form.control, name: 'company.primaryContactEmail' });
   const watchedIso27001Targeted = useWatch({ control: form.control, name: 'governance.iso27001.targeted' }) ?? false;
   const watchedContainsPhi = useWatch({ control: form.control, name: 'scope.containsPhi' }) ?? false;
+  const watchedDataTypesHandled = useWatch({ control: form.control, name: 'scope.dataTypesHandled' }) ?? [];
   const watchedHasCardholderDataEnvironment = useWatch({ control: form.control, name: 'scope.hasCardholderDataEnvironment' }) ?? false;
   const watchedPhiThirdPartyAccess = useWatch({ control: form.control, name: 'scope.hipaa.phiThirdPartyAccess' }) ?? false;
   const watchedHasTokenizationSolution = useWatch({ control: form.control, name: 'scope.pci.hasTokenizationSolution' }) ?? false;
+  const watchedHasPhishingSimulation = useWatch({ control: form.control, name: 'training.hasPhishingSimulation' }) ?? false;
   const watchedHasSastTool = useWatch({ control: form.control, name: 'securityTooling.hasSastTool' }) ?? false;
   const watchedHasSecretsScanningTool = useWatch({ control: form.control, name: 'securityTooling.hasSecretsScanningTool' }) ?? false;
   const watchedHasDependencyScanning = useWatch({ control: form.control, name: 'securityTooling.hasDependencyScanning' }) ?? false;
   const watchedHasThreatModeling = useWatch({ control: form.control, name: 'securityTooling.hasThreatModeling' }) ?? false;
   const watchedHasVulnerabilityDisclosureProgram = useWatch({ control: form.control, name: 'securityTooling.hasVulnerabilityDisclosureProgram' }) ?? false;
+  const watchedHasMdm = useWatch({ control: form.control, name: 'securityTooling.hasMdm' }) ?? false;
   const watchedHasIncidentRetainer = useWatch({ control: form.control, name: 'operations.incidentResponse.hasIncidentRetainer' }) ?? false;
   const watchedHasRiskRegister = useWatch({ control: form.control, name: 'operations.hasRiskRegister' }) ?? false;
-  const watchedValues = mergeWizardData(form.watch());
+  const watchedRequiresPeerReview = useWatch({ control: form.control, name: 'operations.requiresPeerReview' }) ?? false;
+  const watchedRequiresMfa = useWatch({ control: form.control, name: 'operations.requiresMfa' }) ?? false;
+  const watchedRequiresLostDeviceReporting = useWatch({ control: form.control, name: 'operations.requiresLostDeviceReporting' }) ?? false;
+  const watchedHasCentralizedLogging = useWatch({ control: form.control, name: 'securityAssessment.logReview.hasCentralizedLogging' }) ?? false;
+  const watchedReviewsRulesetsRegularly = useWatch({ control: form.control, name: 'securityAssessment.rulesetReview.reviewsRulesetsRegularly' }) ?? false;
+  const watchedHasHardeningBaselines = useWatch({ control: form.control, name: 'securityAssessment.configReview.hasHardeningBaselines' }) ?? false;
+  const watchedHasAutomatedConfigScanning = useWatch({ control: form.control, name: 'securityAssessment.configReview.hasAutomatedConfigScanning' }) ?? false;
+  const watchedHasPatchManagementProcess = useWatch({ control: form.control, name: 'securityAssessment.configReview.hasPatchManagementProcess' }) ?? false;
+  const watchedHasEncryptionInTransit = useWatch({ control: form.control, name: 'securityAssessment.networkAnalysis.hasEncryptionInTransit' }) ?? false;
+  const watchedHasNetworkMonitoring = useWatch({ control: form.control, name: 'securityAssessment.networkAnalysis.hasNetworkMonitoring' }) ?? false;
+  const watchedHasFileIntegrityMonitoring = useWatch({ control: form.control, name: 'securityAssessment.fileIntegrity.hasFileIntegrityMonitoring' }) ?? false;
+  const watchedRawValues = useWatch({ control: form.control });
+  const watchedSubservices = useWatch({ control: form.control, name: 'subservices' }) ?? [];
+  const watchedValues = useMemo(() => mergeWizardData((watchedRawValues ?? {}) as Partial<WizardData>), [watchedRawValues]);
   const expectedTemplates = getExpectedTemplates(watchedValues);
   const trainingToolSuggestions = useMemo(
-    () => getRecommendedTrainingTools(watchedValues.subservices ?? []),
-    [watchedValues.subservices],
+    () => getRecommendedTrainingTools(watchedSubservices),
+    [watchedSubservices],
   );
   const requestedStep = useMemo(() => {
     const rawStep = searchParams.get('step');
@@ -813,26 +834,26 @@ export function PolicyWizard() {
       const next: Record<string, boolean> = {};
 
       fields.forEach((entry, index) => {
-        const currentName = watchedValues.subservices?.[index]?.name?.trim() ?? '';
+        const currentName = watchedSubservices[index]?.name?.trim() ?? '';
         next[entry.id] = previous[entry.id] ?? (currentName.length > 0 && !isKnownSubserviceVendor(currentName));
       });
 
       return next;
     });
-  }, [fields, watchedValues.subservices]);
+  }, [fields, watchedSubservices]);
 
   useEffect(() => {
     setCustomSubserviceRoleIds((previous) => {
       const next: Record<string, boolean> = {};
 
       fields.forEach((entry, index) => {
-        const currentRole = watchedValues.subservices?.[index]?.role?.trim() ?? '';
+        const currentRole = watchedSubservices[index]?.role?.trim() ?? '';
         next[entry.id] = previous[entry.id] ?? (currentRole.length > 0 && !isKnownSubserviceRole(currentRole));
       });
 
       return next;
     });
-  }, [fields, watchedValues.subservices]);
+  }, [fields, watchedSubservices]);
 
   useEffect(() => {
     if (!hasHydrated || !organization) {
@@ -953,8 +974,8 @@ export function PolicyWizard() {
 
   const completion = ((currentStep + 1) / wizardStepTitles.length) * 100;
   const selectedTsc = selectedTscLabels(watchedValues as WizardData);
-  const organizationRelationship = form.watch('company.organizationRelationship');
-  const hasPublicWebsite = form.watch('company.hasPublicWebsite');
+  const organizationRelationship = watchedOrganizationRelationship;
+  const hasPublicWebsite = watchedHasPublicWebsite;
 
   useEffect(() => {
     if (!organization || organizationRelationship !== 'same-as-company') {
@@ -1407,7 +1428,7 @@ export function PolicyWizard() {
                           <FormItem>
                             <FormLabel>Privacy / Data Subject Access Request (DSAR) channel</FormLabel>
                             <FormControl>
-                              <Input {...field} placeholder={form.watch('company.primaryContactEmail') || 'privacy@example.com'} />
+                              <Input {...field} placeholder={watchedPrimaryContactEmail || 'privacy@example.com'} />
                             </FormControl>
                             <FormDescription>Used for data subject access, deletion, correction, opt-out, and privacy complaint workflows.</FormDescription>
                             <FormMessage />
@@ -1524,8 +1545,8 @@ export function PolicyWizard() {
                           <FormControl>
                             <AuditTypeGuidance
                               value={field.value}
-                              maturity={form.watch('company.complianceMaturity')}
-                              orgAge={form.watch('company.orgAge')}
+                              maturity={watchedComplianceMaturity}
+                              orgAge={watchedOrgAge}
                               onChange={(v: TargetAuditType) => field.onChange(v)}
                             />
                           </FormControl>
@@ -1960,7 +1981,7 @@ export function PolicyWizard() {
                           <FormLabel>Simulated phishing campaigns are conducted.</FormLabel>
                         </FormItem>
                       )} />
-                      {form.watch('training.hasPhishingSimulation') && (
+                      {watchedHasPhishingSimulation && (
                         <FormField control={form.control} name="training.phishingSimulationFrequency" render={({ field }) => (
                           <FormItem>
                             <FormLabel>Phishing simulation frequency</FormLabel>
@@ -2094,7 +2115,7 @@ export function PolicyWizard() {
                             </p>
                           </div>
                           <RadioGroup value={field.value ? 'multi' : 'single'} onValueChange={(v) => field.onChange(v === 'multi')} className="grid gap-3 md:grid-cols-2">
-                            <label htmlFor="tenant-multi" className={cn(
+                            <label className={cn(
                               'flex cursor-pointer items-start gap-4 rounded-2xl border bg-white p-4 transition-colors hover:border-primary/40',
                               field.value ? 'border-primary/60 bg-primary/5' : 'border-border',
                             )}>
@@ -2108,7 +2129,7 @@ export function PolicyWizard() {
                                 <p className="text-xs text-muted-foreground/70">Choose this if customers log into the same application and their data lives in shared databases or cloud accounts.</p>
                               </div>
                             </label>
-                            <label htmlFor="tenant-single" className={cn(
+                            <label className={cn(
                               'flex cursor-pointer items-start gap-4 rounded-2xl border bg-white p-4 transition-colors hover:border-primary/40',
                               !field.value ? 'border-primary/60 bg-primary/5' : 'border-border',
                             )}>
@@ -2251,7 +2272,7 @@ export function PolicyWizard() {
                                     <FormDescription>
                                       Turn this on when the system handles treatment, diagnosis, claims, medical records, or other healthcare-regulated information. This is separate from generic customer PII.
                                     </FormDescription>
-                                    {!form.watch('scope.dataTypesHandled').includes('Customer PII') ? (
+                                    {!watchedDataTypesHandled.includes('Customer PII') ? (
                                       <p className="text-xs text-amber-700">PHI often overlaps with `Customer PII`, but keep this field accurate even if your regulated health data is modeled separately.</p>
                                     ) : null}
                                   </div>
@@ -2275,7 +2296,7 @@ export function PolicyWizard() {
                                     <FormDescription>
                                       Turn this on when systems that store, process, transmit, or are directly connected to cardholder data are in scope. This is more specific than simply selecting `Payment data`.
                                     </FormDescription>
-                                    {!form.watch('scope.dataTypesHandled').includes('Payment data') ? (
+                                    {!watchedDataTypesHandled.includes('Payment data') ? (
                                       <p className="text-xs text-amber-700">A CDE usually accompanies `Payment data`. If this stays on, make sure the system description explains the payment boundary clearly.</p>
                                     ) : null}
                                   </div>
@@ -2718,7 +2739,7 @@ export function PolicyWizard() {
                                 control={form.control}
                                 name={`subservices.${index}.name`}
                                 render={({ field }) => {
-                                  const selectedRole = form.watch(`subservices.${index}.role`);
+                                  const selectedRole = watchedSubservices[index]?.role;
                                   const roleIsCustom = customSubserviceRoleIds[subserviceField.id] || Boolean(selectedRole && !isKnownSubserviceRole(selectedRole));
                                   const isCustomVendor = customSubserviceVendorIds[subserviceField.id] || Boolean(field.value && !isKnownSubserviceVendor(field.value));
                                   const selectedVendorValue = isCustomVendor ? customSubserviceVendorValue : field.value || '';
@@ -2855,7 +2876,7 @@ export function PolicyWizard() {
                                   </div>
                                 </FormItem>
                               )} />
-                              {form.watch(`subservices.${index}.hasAssuranceReport`) && (
+                              {Boolean(watchedSubservices[index]?.hasAssuranceReport) && (
                                 <div className="grid gap-4 md:grid-cols-2 md:items-start">
                                   <FormField control={form.control} name={`subservices.${index}.assuranceReportType`} render={({ field }) => (
                                     <FormItem className="flex h-full flex-col">
@@ -3478,7 +3499,7 @@ export function PolicyWizard() {
                           </div>
                           <AssessmentSectionLabel>Control checks</AssessmentSectionLabel>
                           <ControlRow control={form.control} name="securityAssessment.logReview.hasCentralizedLogging" label="Logs are aggregated into a centralized platform." gap={domainBoolFields.logReview[0].gap} recommendation={domainBoolFields.logReview[0].recommendation} />
-                          {form.watch('securityAssessment.logReview.hasCentralizedLogging') && (
+                          {watchedHasCentralizedLogging && (
                             <FormField control={form.control} name="securityAssessment.logReview.centralizedLoggingTool" render={({ field }) => (
                               <FormItem className="ml-8">
                                 <FormLabel>Centralized logging tool</FormLabel>
@@ -3528,7 +3549,7 @@ export function PolicyWizard() {
                           <ControlRow control={form.control} name="securityAssessment.rulesetReview.hasSecurityGroupRules" label="Security group / NSG rules follow least-privilege principles." gap={domainBoolFields.rulesetReview[1].gap} recommendation={domainBoolFields.rulesetReview[1].recommendation} />
                           <ControlRow control={form.control} name="securityAssessment.rulesetReview.hasNaclRules" label="Network ACL rules are reviewed and documented." gap={domainBoolFields.rulesetReview[2].gap} recommendation={domainBoolFields.rulesetReview[2].recommendation} />
                           <ControlRow control={form.control} name="securityAssessment.rulesetReview.reviewsRulesetsRegularly" label="Rulesets are reviewed on a regular cadence." gap={domainBoolFields.rulesetReview[3].gap} recommendation={domainBoolFields.rulesetReview[3].recommendation} />
-                          {form.watch('securityAssessment.rulesetReview.reviewsRulesetsRegularly') && (
+                          {watchedReviewsRulesetsRegularly && (
                             <FormField control={form.control} name="securityAssessment.rulesetReview.rulesetReviewCadence" render={({ field }) => (
                               <FormItem className="ml-8">
                                 <FormLabel>Review cadence</FormLabel>
@@ -3571,7 +3592,7 @@ export function PolicyWizard() {
                           </div>
                           <AssessmentSectionLabel>Control checks</AssessmentSectionLabel>
                           <ControlRow control={form.control} name="securityAssessment.configReview.hasHardeningBaselines" label="Security hardening baselines (CIS, DISA STIG, vendor guides) are defined." gap={domainBoolFields.configReview[0].gap} recommendation={domainBoolFields.configReview[0].recommendation} />
-                          {form.watch('securityAssessment.configReview.hasHardeningBaselines') && (
+                          {watchedHasHardeningBaselines && (
                             <FormField control={form.control} name="securityAssessment.configReview.hardeningFramework" render={({ field }) => (
                               <FormItem className="ml-8">
                                 <FormLabel>Hardening framework</FormLabel>
@@ -3580,7 +3601,7 @@ export function PolicyWizard() {
                             )} />
                           )}
                           <ControlRow control={form.control} name="securityAssessment.configReview.hasAutomatedConfigScanning" label="Automated configuration compliance scanning is in place." gap={domainBoolFields.configReview[1].gap} recommendation={domainBoolFields.configReview[1].recommendation} />
-                          {form.watch('securityAssessment.configReview.hasAutomatedConfigScanning') && (
+                          {watchedHasAutomatedConfigScanning && (
                             <FormField control={form.control} name="securityAssessment.configReview.configScanningTool" render={({ field }) => (
                               <FormItem className="ml-8">
                                 <FormLabel>Configuration scanning tool</FormLabel>
@@ -3589,7 +3610,7 @@ export function PolicyWizard() {
                             )} />
                           )}
                           <ControlRow control={form.control} name="securityAssessment.configReview.hasPatchManagementProcess" label="A patch management process with defined SLAs exists." gap={domainBoolFields.configReview[2].gap} recommendation={domainBoolFields.configReview[2].recommendation} />
-                          {form.watch('securityAssessment.configReview.hasPatchManagementProcess') && (
+                          {watchedHasPatchManagementProcess && (
                             <FormField control={form.control} name="securityAssessment.configReview.patchSlaBusinessDays" render={({ field }) => (
                               <FormItem className="ml-8">
                                 <FormLabel>Critical patch Service Level Agreement (SLA) (business days)</FormLabel>
@@ -3636,7 +3657,7 @@ export function PolicyWizard() {
                           <AssessmentSectionLabel>Control checks</AssessmentSectionLabel>
                           <ControlRow control={form.control} name="securityAssessment.networkAnalysis.hasNetworkSegmentation" label="Network segmentation separates production, staging, and corporate environments." gap={domainBoolFields.networkAnalysis[0].gap} recommendation={domainBoolFields.networkAnalysis[0].recommendation} />
                           <ControlRow control={form.control} name="securityAssessment.networkAnalysis.hasEncryptionInTransit" label="All data in transit is encrypted (TLS 1.2+)." gap={domainBoolFields.networkAnalysis[1].gap} recommendation={domainBoolFields.networkAnalysis[1].recommendation} />
-                          {form.watch('securityAssessment.networkAnalysis.hasEncryptionInTransit') && (
+                          {watchedHasEncryptionInTransit && (
                             <FormField control={form.control} name="securityAssessment.networkAnalysis.encryptionProtocol" render={({ field }) => (
                               <FormItem className="ml-8">
                                 <FormLabel>Minimum encryption protocol</FormLabel>
@@ -3645,7 +3666,7 @@ export function PolicyWizard() {
                             )} />
                           )}
                           <ControlRow control={form.control} name="securityAssessment.networkAnalysis.hasNetworkMonitoring" label="Network traffic monitoring or anomaly detection is deployed." gap={domainBoolFields.networkAnalysis[2].gap} recommendation={domainBoolFields.networkAnalysis[2].recommendation} />
-                          {form.watch('securityAssessment.networkAnalysis.hasNetworkMonitoring') && (
+                          {watchedHasNetworkMonitoring && (
                             <FormField control={form.control} name="securityAssessment.networkAnalysis.networkMonitoringTool" render={({ field }) => (
                               <FormItem className="ml-8">
                                 <FormLabel>Network monitoring tool</FormLabel>
@@ -3688,7 +3709,7 @@ export function PolicyWizard() {
                           </div>
                           <AssessmentSectionLabel>Control checks</AssessmentSectionLabel>
                           <ControlRow control={form.control} name="securityAssessment.fileIntegrity.hasFileIntegrityMonitoring" label="File integrity monitoring (FIM) is deployed on production systems." gap={domainBoolFields.fileIntegrity[0].gap} recommendation={domainBoolFields.fileIntegrity[0].recommendation} />
-                          {form.watch('securityAssessment.fileIntegrity.hasFileIntegrityMonitoring') && (
+                          {watchedHasFileIntegrityMonitoring && (
                             <FormField control={form.control} name="securityAssessment.fileIntegrity.fimTool" render={({ field }) => (
                               <FormItem className="ml-8">
                                 <FormLabel>File Integrity Monitoring (FIM) tool</FormLabel>
@@ -3795,7 +3816,7 @@ export function PolicyWizard() {
                         gap="Without MDM, company devices may lack enforced disk encryption, screen lock policies, or remote wipe capability — leaving sensitive data at risk if a device is lost or stolen."
                         recommendation="Jamf Pro/Now (macOS/iOS), Kandji (Apple-focused), or Microsoft Intune (cross-platform) are common options. Start by enforcing disk encryption and screen lock, then add patch compliance reporting."
                       />
-                      {form.watch('securityTooling.hasMdm') && (
+                      {watchedHasMdm && (
                         <FormField control={form.control} name="securityTooling.mdmTool" render={({ field }) => (
                           <FormItem className="ml-8">
                             <FormLabel>Mobile Device Management (MDM) tool</FormLabel>
@@ -4227,8 +4248,8 @@ export function PolicyWizard() {
                         recommendation="Work with your broker to obtain a cyber liability policy covering first-party costs (breach response, business interruption) and third-party coverage (customer notification, legal defense)."
                       />
                       <LoneWolfWarning
-                        requiresPeerReview={form.watch('operations.requiresPeerReview')}
-                        requiresMfa={form.watch('operations.requiresMfa')}
+                        requiresPeerReview={watchedRequiresPeerReview}
+                        requiresMfa={watchedRequiresMfa}
                       />
                       {hasActiveOperationsRule('operations-mfa-entra-guidance') && (
                         <ShowMeHow {...SHOW_ME_HOW_ENTRA_MFA} />
@@ -4314,7 +4335,7 @@ export function PolicyWizard() {
                           gap="A lost device can expose credentials, cached customer data, or local files. Auditors expect a documented reporting path and response window."
                           recommendation="Tie lost-device reporting to your MDM or endpoint response process so remote lock, wipe, and access revocation can be evidenced."
                         />
-                        {form.watch('operations.requiresLostDeviceReporting') ? (
+                        {watchedRequiresLostDeviceReporting ? (
                           <FormField control={form.control} name="operations.lostDeviceReportSlaHours" render={({ field }) => (
                             <FormItem>
                               <FormLabel>Device report Service Level Agreement (SLA) (hours)</FormLabel>

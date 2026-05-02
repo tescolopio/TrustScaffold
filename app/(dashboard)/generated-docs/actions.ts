@@ -7,6 +7,7 @@ import { redirect } from 'next/navigation';
 import { exportApprovedDocsToAzureDevOpsAction } from '@/app/actions/export-to-azure-devops';
 import { exportApprovedDocsToGithubAction } from '@/app/actions/export-to-github';
 import { canApproveDocuments, canRejectOrRegenerateDocuments, isAdminRole } from '@/lib/auth/roles';
+import { deriveDocumentArtifactStates } from '@/lib/documents/document-artifacts';
 import {
   buildGeneratedDocErrorRoute,
   buildGeneratedDocsErrorRoute,
@@ -104,9 +105,34 @@ export async function approveGeneratedDocAction(formData: FormData) {
     redirect(buildGeneratedDocErrorRoute(documentId, 'Document is already approved'));
   }
 
+  const { data: docForArtifactState } = await supabase
+    .from('generated_docs')
+    .select('input_payload, templates(slug)')
+    .eq('id', documentId)
+    .single();
+  const { data: currentDraft } = await supabase
+    .from('wizard_drafts')
+    .select('payload')
+    .eq('organization_id', document.organization_id)
+    .maybeSingle();
+  const artifactTemplate = docForArtifactState?.templates;
+  const artifactTemplateRelation = Array.isArray(artifactTemplate) ? artifactTemplate[0] : artifactTemplate;
+  const artifactState = deriveDocumentArtifactStates({
+    documentSlug: artifactTemplateRelation?.slug,
+    documentStatus: 'approved',
+    sourcePayload: docForArtifactState?.input_payload,
+    currentDraftPayload: currentDraft?.payload,
+  });
+
   const { error } = await supabase
     .from('generated_docs')
-    .update({ status: 'approved', approved_by: userId, approved_at: new Date().toISOString() })
+    .update({
+      status: 'approved',
+      approved_by: userId,
+      approved_at: new Date().toISOString(),
+      artifact_state: artifactState,
+      artifact_state_updated_at: new Date().toISOString(),
+    })
     .eq('id', documentId)
     .eq('organization_id', document.organization_id);
 
@@ -198,9 +224,34 @@ export async function rejectGeneratedDocAction(formData: FormData) {
     redirect(buildGeneratedDocErrorRoute(documentId, 'Only draft documents can be rejected'));
   }
 
+  const { data: docForArtifactState } = await supabase
+    .from('generated_docs')
+    .select('input_payload, templates(slug)')
+    .eq('id', documentId)
+    .single();
+  const { data: currentDraft } = await supabase
+    .from('wizard_drafts')
+    .select('payload')
+    .eq('organization_id', document.organization_id)
+    .maybeSingle();
+  const artifactTemplate = docForArtifactState?.templates;
+  const artifactTemplateRelation = Array.isArray(artifactTemplate) ? artifactTemplate[0] : artifactTemplate;
+  const artifactState = deriveDocumentArtifactStates({
+    documentSlug: artifactTemplateRelation?.slug,
+    documentStatus: 'archived',
+    sourcePayload: docForArtifactState?.input_payload,
+    currentDraftPayload: currentDraft?.payload,
+  });
+
   const { error: updateError } = await supabase
     .from('generated_docs')
-    .update({ status: 'archived', approved_by: null, approved_at: null })
+    .update({
+      status: 'archived',
+      approved_by: null,
+      approved_at: null,
+      artifact_state: artifactState,
+      artifact_state_updated_at: new Date().toISOString(),
+    })
     .eq('id', documentId)
     .eq('organization_id', document.organization_id);
 
@@ -295,7 +346,7 @@ export async function regenerateDocAction(formData: FormData) {
   const supabase = await createSupabaseServerClient();
   const { data: doc, error: docError } = await supabase
     .from('generated_docs')
-    .select('id, template_id, input_payload, version, templates(name, output_filename_pattern, markdown_template, default_variables)')
+    .select('id, template_id, input_payload, version, templates(name, slug, output_filename_pattern, markdown_template, default_variables)')
     .eq('id', documentId)
     .eq('organization_id', context.organization.id)
     .single();
@@ -332,7 +383,18 @@ export async function regenerateDocAction(formData: FormData) {
 
   const { error: updateError } = await supabase
     .from('generated_docs')
-    .update({ file_name: newFilename, content_markdown: newContent, status: 'draft' })
+    .update({
+      file_name: newFilename,
+      content_markdown: newContent,
+      status: 'draft',
+      artifact_state: deriveDocumentArtifactStates({
+        documentSlug: template.slug,
+        documentStatus: 'draft',
+        sourcePayload: parsed.data,
+        currentDraftPayload: parsed.data,
+      }),
+      artifact_state_updated_at: new Date().toISOString(),
+    })
     .eq('id', documentId);
 
   if (updateError) redirect(buildGeneratedDocErrorRoute(documentId, updateError.message));
@@ -389,7 +451,7 @@ export async function regenerateAllDocsAction(formData: FormData) {
 
   const { data: docs } = await supabase
     .from('generated_docs')
-    .select('id, templates(name, output_filename_pattern, markdown_template, default_variables)')
+    .select('id, templates(name, slug, output_filename_pattern, markdown_template, default_variables)')
     .eq('organization_id', context.organization.id)
     .neq('status', 'archived');
 
@@ -414,7 +476,18 @@ export async function regenerateAllDocsAction(formData: FormData) {
 
     const { error: updateError } = await supabase
       .from('generated_docs')
-      .update({ file_name: newFilename, content_markdown: newContent, status: 'draft' })
+      .update({
+        file_name: newFilename,
+        content_markdown: newContent,
+        status: 'draft',
+        artifact_state: deriveDocumentArtifactStates({
+          documentSlug: template.slug,
+          documentStatus: 'draft',
+          sourcePayload: parsed.data,
+          currentDraftPayload: parsed.data,
+        }),
+        artifact_state_updated_at: new Date().toISOString(),
+      })
       .eq('id', doc.id);
 
     if (!updateError) {
