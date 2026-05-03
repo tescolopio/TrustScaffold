@@ -802,7 +802,8 @@ export function PolicyWizard() {
   const watchedHasNetworkMonitoring = useWatch({ control: form.control, name: 'securityAssessment.networkAnalysis.hasNetworkMonitoring' }) ?? false;
   const watchedHasFileIntegrityMonitoring = useWatch({ control: form.control, name: 'securityAssessment.fileIntegrity.hasFileIntegrityMonitoring' }) ?? false;
   const watchedRawValues = useWatch({ control: form.control });
-  const watchedSubservices = useWatch({ control: form.control, name: 'subservices' }) ?? [];
+  const watchedSubservicesValue = useWatch({ control: form.control, name: 'subservices' });
+  const watchedSubservices = useMemo(() => watchedSubservicesValue ?? [], [watchedSubservicesValue]);
   const watchedValues = useMemo(() => mergeWizardData((watchedRawValues ?? {}) as Partial<WizardData>), [watchedRawValues]);
   const expectedTemplates = getExpectedTemplates(watchedValues);
   const trainingToolSuggestions = useMemo(

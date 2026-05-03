@@ -13,13 +13,14 @@ import {
   infoPanelSurfaceClassName,
   interactiveListRowSurfaceClassName,
   metricPanelSurfaceClassName,
+  mutedInsetSurfaceClassName,
   nestedPanelSurfaceClassName,
   successPanelSurfaceClassName,
   warningPanelSurfaceClassName,
 } from '@/lib/ui/card-surfaces';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
 import { cn, formatDisplayLabel } from '@/lib/utils';
-import { soxApplicabilityOptions, wizardSchema, wizardStepTitles } from '@trestle-labs/core';
+import { buildCapabilityBaselineModel, soxApplicabilityOptions, wizardSchema, wizardStepTitles } from '@trestle-labs/core';
 
 export default async function DashboardPage() {
   const context = await getDashboardContext();
@@ -118,6 +119,9 @@ export default async function DashboardPage() {
       icon: Settings,
     },
   ];
+  const capabilityBaseline = savedWizardData
+    ? buildCapabilityBaselineModel(savedWizardData, { docs: docs ?? [], staleDocCount: staleDocs.length })
+    : null;
 
   return (
     <div className="space-y-6">
@@ -227,6 +231,98 @@ export default async function DashboardPage() {
             <EmptyState className="p-5">
               <p className="font-semibold text-foreground">No saved stage summaries yet</p>
               <p className="mt-1">Start the wizard and save a draft to populate the dashboard with company, scope, governance, tooling, and operations snapshots.</p>
+              <Button asChild className="mt-3">
+                <Link href="/wizard">Open wizard</Link>
+              </Button>
+            </EmptyState>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex flex-wrap items-center gap-2">
+            <CardTitle>OCEG capability baseline</CardTitle>
+            <Badge variant="secondary">Learn / Align / Perform / Review</Badge>
+          </div>
+          <CardDescription>
+            Organization-specific baseline generated from current wizard answers and artifact state. This is execution-first: it shows where the current program is strongest today and what should be tightened next.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {capabilityBaseline ? (
+            <>
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div className={metricPanelSurfaceClassName}>
+                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Overall baseline</p>
+                  <p className="mt-2 text-2xl font-semibold text-foreground">{capabilityBaseline.overallScore}%</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{capabilityBaseline.overallBand} operating baseline</p>
+                </div>
+                <div className={metricPanelSurfaceClassName}>
+                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Frameworks in view</p>
+                  <p className="mt-2 text-2xl font-semibold text-foreground">{capabilityBaseline.selectedTsc.length}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{capabilityBaseline.selectedCriteriaCount} mapped criteria or tags</p>
+                </div>
+                <div className={metricPanelSurfaceClassName}>
+                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Expected artifacts</p>
+                  <p className="mt-2 text-2xl font-semibold text-foreground">{capabilityBaseline.expectedTemplateCount}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Current template footprint implied by answers</p>
+                </div>
+                <div className={metricPanelSurfaceClassName}>
+                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Lowest scoring area</p>
+                  <p className="mt-2 text-lg font-semibold text-foreground">{capabilityBaseline.priorities[0]?.areaLabel ?? 'None'}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Use the priorities below to improve the weakest layer first</p>
+                </div>
+              </div>
+
+              <div className="grid gap-4 xl:grid-cols-2">
+                {capabilityBaseline.areas.map((area) => (
+                  <div key={area.key} className={cn(metricPanelSurfaceClassName, 'space-y-3')}>
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">{area.label}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">{area.summary}</p>
+                      </div>
+                      <Badge variant="secondary">{area.score}%</Badge>
+                    </div>
+                    <div className="grid gap-3 lg:grid-cols-2">
+                      <div className={cn(mutedInsetSurfaceClassName, 'border border-border')}>
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Current strengths</p>
+                        <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+                          {area.strengths.map((strength) => (
+                            <li key={strength}>- {strength}</li>
+                          ))}
+                        </ul>
+                      </div>
+                      <div className={cn(mutedInsetSurfaceClassName, 'border border-border')}>
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Highest-value gaps</p>
+                        <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+                          {area.gaps.map((gap) => (
+                            <li key={gap}>- {gap}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className={warningPanelSurfaceClassName}>
+                <p className="text-sm font-semibold">Top next moves</p>
+                <div className="mt-3 space-y-2">
+                  {capabilityBaseline.priorities.map((priority) => (
+                    <div key={priority.title} className={cn(mutedInsetSurfaceClassName, 'border border-current/15 bg-white/60 dark:bg-background/20')}>
+                      <p className="text-sm font-semibold text-current">{priority.title}</p>
+                      <p className="mt-1 text-xs text-current/90">{priority.detail}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          ) : (
+            <EmptyState className="p-5">
+              <p className="font-semibold text-foreground">No capability baseline yet</p>
+              <p className="mt-1">Save a wizard draft first. TrustScaffold will then score the organization’s current baseline across Learn, Align, Perform, and Review.</p>
               <Button asChild className="mt-3">
                 <Link href="/wizard">Open wizard</Link>
               </Button>

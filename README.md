@@ -217,6 +217,7 @@ npx tsx tests/e2e/red-team.ts
 | Document | Description |
 |---|---|
 | [`docs/LOCAL_DEV.md`](docs/LOCAL_DEV.md) | Local development setup, validation flow, useful commands |
+| [`docs/OCEG_CAPABILITY_MODEL_ASSESSMENT.md`](docs/OCEG_CAPABILITY_MODEL_ASSESSMENT.md) | OCEG Learn/Align/Perform/Review assessment of current TrustScaffold strengths and gaps |
 | [`docs/SELF-HOSTING.md`](docs/SELF-HOSTING.md) | Production deployment, Docker, security boundaries |
 | [`docs/MASTER_TEST_PLAN.md`](docs/MASTER_TEST_PLAN.md) | Complete test plan with traceability matrix |
 | [`docs/PRODUCT_SPEC_V1.md`](docs/PRODUCT_SPEC_V1.md) | Product specification and feature descriptions |
