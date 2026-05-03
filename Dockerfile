@@ -30,7 +30,9 @@ RUN addgroup --system --gid 1001 nodejs && \
 
 # Copy only what the production server needs
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./TrustScaffold/.next/static
+
+WORKDIR /app/TrustScaffold
 
 USER nextjs
 
