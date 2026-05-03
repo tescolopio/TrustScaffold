@@ -1,3 +1,4 @@
+import type { Route } from 'next';
 import Link from 'next/link';
 
 import { submitAuditReportAttestationAction } from '@/app/(dashboard)/dashboard/audit-report/actions';
@@ -131,7 +132,7 @@ export default async function AuditReportPage({
           </div>
           <div className="sm:col-span-2 xl:col-span-4 flex flex-wrap gap-2">
             <Button asChild>
-              <Link href="/api/v1/audit-report/export">Export Markdown</Link>
+              <Link href={'/api/v1/audit-report/export' as Route}>Export Markdown</Link>
             </Button>
             <PrintReportButton />
           </div>
@@ -314,7 +315,7 @@ export default async function AuditReportPage({
                 <Link href="/generated-docs">Review Generated Docs</Link>
               </Button>
               <Button asChild variant="outline">
-                <Link href="/dashboard/control-map">Open Control Map</Link>
+                <Link href={'/dashboard/control-map' as Route}>Open Control Map</Link>
               </Button>
             </div>
           </CardContent>

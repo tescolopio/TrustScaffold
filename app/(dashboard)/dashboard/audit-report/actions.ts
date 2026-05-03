@@ -1,10 +1,18 @@
 'use server';
 
+import type { Route } from 'next';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
 import { getDashboardContext } from '@/lib/auth/get-dashboard-context';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
+
+const AUDIT_REPORT_ROUTE = '/dashboard/audit-report' as Route;
+
+function redirectToAuditReport(searchParams: Record<string, string>) {
+  const query = new URLSearchParams(searchParams);
+  redirect(`${AUDIT_REPORT_ROUTE}?${query.toString()}` as Route);
+}
 
 export async function submitAuditReportAttestationAction(formData: FormData) {
   const context = await getDashboardContext();
@@ -14,18 +22,18 @@ export async function submitAuditReportAttestationAction(formData: FormData) {
   }
 
   if (!['admin', 'approver', 'editor'].includes(context.organization.role)) {
-    redirect('/dashboard/audit-report?error=You%20do%20not%20have%20permission%20to%20submit%20attestations');
+    redirectToAuditReport({ error: 'You do not have permission to submit attestations' });
   }
 
   const readiness = String(formData.get('readiness') ?? '').trim();
   const note = String(formData.get('attestation_note') ?? '').trim();
 
   if (!['ready', 'not-ready'].includes(readiness)) {
-    redirect('/dashboard/audit-report?error=Select%20a%20report%20readiness%20status');
+    redirectToAuditReport({ error: 'Select a report readiness status' });
   }
 
   if (note.length < 10) {
-    redirect('/dashboard/audit-report?error=Provide%20an%20attestation%20note%20(10%2B%20characters)');
+    redirectToAuditReport({ error: 'Provide an attestation note (10+ characters)' });
   }
 
   const supabase = await createSupabaseServerClient();
@@ -43,9 +51,9 @@ export async function submitAuditReportAttestationAction(formData: FormData) {
   });
 
   if (error) {
-    redirect(`/dashboard/audit-report?error=${encodeURIComponent(error.message)}`);
+    redirectToAuditReport({ error: error.message });
   }
 
-  revalidatePath('/dashboard/audit-report');
-  redirect('/dashboard/audit-report?success=Attestation%20submitted');
+  revalidatePath(AUDIT_REPORT_ROUTE);
+  redirectToAuditReport({ success: 'Attestation submitted' });
 }

@@ -100,13 +100,13 @@ export default async function DashboardPage() {
       icon: FileText,
     },
     {
-      href: '/dashboard/audit-report',
+      href: '/dashboard/audit-report' as Route,
       label: 'Open audit report',
       description: 'View an auditor-style report generated from current wizard answers, including findings and evidence gaps.',
       icon: ClipboardList,
     },
     {
-      href: '/dashboard/control-map',
+      href: '/dashboard/control-map' as Route,
       label: 'Open control map',
       description: 'Visualize how wizard answers map to controls, frameworks, sub-service organizations, and generated docs.',
       icon: Network,
